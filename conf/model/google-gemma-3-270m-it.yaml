@@ -1,4 +1,4 @@
-# conf/model/google-gemma-3-270m-it
+# conf/model/google-gemma-3-270m-it.yaml
 # @package _global_
 
 name: "google/gemma-3-270m-it"
