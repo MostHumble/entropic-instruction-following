@@ -1,17 +1,27 @@
 defaults:
   - _self_
-  - model: google-gemma-3-270m-it.yaml         # Default to mistral.yaml
-  - strategy: standard      # Default to standard.yaml
+  - model: HuggingFaceTB-SmolLM-135M-Instruct.yaml
+  - strategy: standard
 
 experiment:
-  rule_counts: [50, 100, 200, 400, 800] # todo: move this to data gen
-  rule_counts_test: [200]
-  trials_per_count: 3
-  dataset_path: "data/raw/dataset_v1.json"
+  rule_counts: [200]
   results_dir: "data/results"
 
 word_data_generator:
+  dataset_path: "data/raw/dataset_v1.json"
+  trials_per_count: 3
   seeds: ["food.n.02", "artifact.n.01"]  # List of WordNet synset seeds
+  rule_counts: [50, 100, 200, 400, 800]
+  # Pattern mixing experiments
+  patterns:
+    - "c"        # Pure coherent
+    - "r"        # Pure random
+    - "cr"       # Alternating
+    - "cccr"     # Pulse (3:1 ratio)
+    - "c|r"      # Half coherent, half random
+    - "c|r|c"    # Bookends (coherent-random-coherent)
+    - "r|c|r"    # Inverse bookends
+    - "c0|c1"    # Multi-seed (first seed | second seed)
   alphanumeric_only: true
   
 # These can be overridden by the specific model yamls

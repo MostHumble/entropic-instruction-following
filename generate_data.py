@@ -14,17 +14,16 @@ def main(cfg: DictConfig):
         seeds=cfg.word_data_generator.seeds
     )
     
-    # Access config values using dot notation
-    counts = cfg.experiment.rule_counts
-    trials = cfg.experiment.trials_per_count
+    counts = cfg.word_data_generator.rule_counts
+    trials = cfg.word_data_generator.trials_per_count
+    patterns = cfg.word_data_generator.get('patterns', ['c', 'r'])
     
     logger.info(f"Generating for counts: {counts}")
-    dataset = gen.generate_dataset(rule_counts=counts, trials=trials)
+    logger.info(f"Using patterns: {patterns}")
+    dataset = gen.generate_dataset(rule_counts=counts, trials=trials, patterns=patterns)
     
-    # Hydra automatically handles path resolution relative to where you run the script
-    # But for data, we usually want a fixed absolute path or relative to project root
-    # For simplicity here, we use the string from config
-    gen.save_dataset(dataset, cfg.experiment.dataset_path)
+    gen.save_dataset(dataset, cfg.word_data_generator.dataset_path)
+    logger.info(f"Generated {len(dataset)} samples")
 
 if __name__ == "__main__":
     main()
