@@ -1,9 +1,7 @@
 # conf/model/mistral.yaml
-# @package _global_  
 
 model:
   name: "mistralai/Mistral-Nemo-Instruct-2407"
-  # We can remove max_len from here if we override global inference.max_model_len below
 
 inference:
   max_model_len: 128000  # Override base 16000
