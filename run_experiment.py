@@ -1,5 +1,4 @@
 import hydra
-import json
 import logging
 import os
 from dotenv import load_dotenv
@@ -41,7 +40,7 @@ def main(cfg: DictConfig):
     logger.info(f"Loaded {len(dataset)} samples")
 
     # 3. Build prompts
-    prompts = [strategy.build_prompt(case['words']) for case in dataset]
+    prompts = [strategy.build_prompt(case['words']) for case in dataset if case['count'] in cfg.experiment.rule_counts_test]
 
     # 4. Initialize vLLM
     logger.info(f"Context window: {cfg.inference.max_model_len}")
@@ -69,8 +68,8 @@ def main(cfg: DictConfig):
         case = dataset[i]
         stats = Evaluator.score_strict(case['words'], output.outputs[0].text)
         results.append({
-            "strategy": strategy.name,
-            "count": case['count'],
+            "id" : case['id'],
+            "strategy": str(strategy),
             "score": stats['score'],
             "model": cfg.model.name,
         })
