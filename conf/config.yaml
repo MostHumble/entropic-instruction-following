@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - model: mistral          # Default to mistral.yaml
+  - model: google-gemma-3-270m-it.yaml         # Default to mistral.yaml
   - strategy: standard      # Default to standard.yaml
 
 experiment:
@@ -11,12 +11,13 @@ experiment:
 
 word_data_generator:
   seeds: ["food.n.02", "artifact.n.01"]  # List of WordNet synset seeds
-  alphanumeric_only: false
+  alphanumeric_only: true
   
 # These can be overridden by the specific model yamls
 inference:
-  max_model_len: 16000
+  trust_remote_code: false
+  max_model_len: null
   sampling:
-    temperature: 0.2
-    top_p: 0.95
-    max_tokens: 4096
+    temperature: 0
+    top_p: 1.0
+    max_tokens: null
