@@ -4,6 +4,7 @@ import logging
 import os
 from dotenv import load_dotenv
 
+import torch
 import pandas as pd
 from omegaconf import DictConfig
 from huggingface_hub import login
@@ -24,10 +25,16 @@ else:
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info(f"Using device: {device}")
+
     # 1. Load strategy
     strategy = get_strategy(cfg.strategy.name)
-    logger.info(f"Strategy: {strategy.name}")
+    logger.info(f"Strategy: {str(strategy)}")
     logger.info(f"Model: {cfg.model.name}")
+    logger.info(f"Max model len: {cfg.inference.max_model_len}")
+    logger.info(f"Temperature: {cfg.inference.sampling.temperature}")
 
     # 2. Load dataset
     dataset = load_dataset(cfg.experiment.dataset_path)
@@ -43,7 +50,7 @@ def main(cfg: DictConfig):
     llm = LLM(
         model=cfg.model.name,
         max_model_len=cfg.inference.max_model_len,
-        trust_remote_code=True  # Add if using custom models
+        trust_remote_code=cfg.inference.trust_remote_code,
     )
 
     sampling_params = SamplingParams(
