@@ -9,7 +9,10 @@ logger = logging.getLogger(__name__)
 def main(cfg: DictConfig):
     logger.info("Starting Data Generation...")
     
-    gen = WordDataGenerator()
+    gen = WordDataGenerator(
+        alphanumeric_only=cfg.word_data_generator.alphanumeric_only,
+        seeds=cfg.word_data_generator.seeds
+    )
     
     # Access config values using dot notation
     counts = cfg.experiment.rule_counts

@@ -9,6 +9,10 @@ experiment:
   dataset_path: "data/raw/dataset_v1.json"
   results_dir: "data/results"
 
+word_data_generator:
+  seeds: ["food.n.02", "artifact.n.01"]  # List of WordNet synset seeds
+  alphanumeric_only: false
+  
 # These can be overridden by the specific model yamls
 inference:
   max_model_len: 16000
