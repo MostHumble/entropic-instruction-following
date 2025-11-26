@@ -173,63 +173,103 @@ class WordDataGenerator:
             Tuple of (word_list, metadata)
             
         Examples:
-            get_mixed_list(12, 'cr') -> alternating coherent/random
-            get_mixed_list(12, 'c|r|c') -> 4 coherent, 4 random, 4 coherent
-            get_mixed_list(12, 'cccr') -> 3 coherent, 1 random, repeated
+            get_mixed_list(12, 'cr') -> c,r,c,r,c,r,c,r,c,r,c,r (alternating, different words)
+            get_mixed_list(12, 'c|r|c') -> [4 coherent], [4 random], [4 coherent] (blocks)
+            get_mixed_list(12, 'cccr') -> c,c,c,r,c,c,c,r,c,c,c,r (3:1 pulse)
         """
         mode, components = self.parse_pattern(pattern)
         
+        # First, determine how many words we need from each component type
+        component_counts = {}
+        
         if mode == 'repeating':
-            # Cycle through components until we have n words
-            result = []
-            component_metadata = []
+            # Count how many times each component appears in the full sequence
             pattern_length = len(components)
-            
             for i in range(n):
                 component = components[i % pattern_length]
-                words, metadata = self.get_words_for_component(component, 1)
-                result.extend(words)
-                component_metadata.append({
-                    "position": i,
-                    "component": component,
-                    "word": words[0]
-                })
-            
-            final_metadata = {
-                "pattern": pattern,
-                "mode": "repeating",
-                "total_words": n,
-                "component_details": component_metadata
-            }
-            
+                component_counts[component] = component_counts.get(component, 0) + 1
+                
         else:  # blocked mode
             # Split n into equal blocks
             num_blocks = len(components)
             block_size = n // num_blocks
             remainder = n % num_blocks
             
-            result = []
-            block_metadata = []
-            
             for idx, component in enumerate(components):
                 # Distribute remainder across first blocks
                 current_block_size = block_size + (1 if idx < remainder else 0)
-                words, metadata = self.get_words_for_component(component, current_block_size)
-                result.extend(words)
+                component_counts[component] = component_counts.get(component, 0) + current_block_size
+        
+        # Now fetch all words needed for each component type
+        component_pools = {}
+        component_metadata = {}
+        
+        for component, count in component_counts.items():
+            words, metadata = self.get_words_for_component(component, count)
+            component_pools[component] = words
+            component_metadata[component] = metadata
+        
+        # Build the final sequence according to the pattern
+        result = []
+        component_indices = {comp: 0 for comp in component_pools}
+        position_details = []
+        
+        if mode == 'repeating':
+            # Cycle through components, taking one word at a time
+            pattern_length = len(components)
+            for i in range(n):
+                component = components[i % pattern_length]
+                idx = component_indices[component]
+                word = component_pools[component][idx]
+                result.append(word)
+                
+                position_details.append({
+                    "position": i,
+                    "component": component,
+                    "word": word
+                })
+                
+                component_indices[component] += 1
+            
+            final_metadata = {
+                "pattern": pattern,
+                "mode": "repeating",
+                "total_words": n,
+                "component_counts": component_counts,
+                "position_details": position_details
+            }
+            
+        else:  # blocked mode
+            # Add words block by block
+            block_metadata = []
+            num_blocks = len(components)
+            block_size = n // num_blocks
+            remainder = n % num_blocks
+            
+            for idx, component in enumerate(components):
+                current_block_size = block_size + (1 if idx < remainder else 0)
+                start_pos = len(result)
+                
+                # Take the next chunk from this component's pool
+                comp_idx = component_indices[component]
+                block_words = component_pools[component][comp_idx:comp_idx + current_block_size]
+                result.extend(block_words)
+                component_indices[component] += current_block_size
                 
                 block_metadata.append({
                     "block_index": idx,
                     "component": component,
-                    "start_position": len(result) - current_block_size,
+                    "start_position": start_pos,
                     "end_position": len(result),
                     "size": current_block_size,
-                    "metadata": metadata
+                    "words": block_words
                 })
             
             final_metadata = {
                 "pattern": pattern,
                 "mode": "blocked",
                 "total_words": n,
+                "component_counts": component_counts,
                 "blocks": block_metadata
             }
         
