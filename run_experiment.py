@@ -37,6 +37,13 @@ def main(cfg: DictConfig):
     prompts = [strategy.build_prompt(case['words']) for case in dataset]
 
     # 4. Initialize vLLM (using params from config)
+    # Log the effective config to verify overrides
+    logger.info(f"Model: {cfg.model.name}")
+    logger.info(f"Effective Context Window: {cfg.inference.max_model_len}")
+    logger.info(f"Effective Temperature: {cfg.inference.sampling.temperature}")
+
+    # Initialize vLLM
+    # Note: We now use cfg.inference.max_model_len everywhere!
     llm = LLM(
         model=cfg.model.name, 
         max_model_len=cfg.inference.max_model_len
