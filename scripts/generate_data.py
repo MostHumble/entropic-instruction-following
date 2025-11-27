@@ -1,11 +1,16 @@
 import hydra
+import sys
+from pathlib import Path
 from omegaconf import DictConfig
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from src.generators import WordDataGenerator
 import logging
 
 logger = logging.getLogger(__name__)
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg: DictConfig):
     logger.info("Starting Data Generation...")
     

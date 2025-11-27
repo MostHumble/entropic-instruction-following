@@ -2,7 +2,11 @@ import hydra
 import json
 import logging
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
 import pandas as pd
@@ -23,7 +27,7 @@ if not HF_TOKEN:
 else:
     login(token=HF_TOKEN)
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg: DictConfig):
     # Check device availability
     if not torch.cuda.is_available():
@@ -90,6 +94,7 @@ def main(cfg: DictConfig):
         case = filtered_dataset[i]
         generated_text = output.outputs[0].text
         stats = Evaluator.score_strict(case['words'], generated_text)
+        
         results.append({
             "id": case['id'],
             "type": case['type'],
