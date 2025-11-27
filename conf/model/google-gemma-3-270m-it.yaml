@@ -1,9 +1,0 @@
-# conf/model/google-gemma-3-270m-it.yaml
-# @package _global_
-
-name: "google/gemma-3-270m-it"
-
-inference:
-  max_model_len: 8192    # Override base 16000
-  sampling:
-    temperature: 0.6     # Llama might need higher temp

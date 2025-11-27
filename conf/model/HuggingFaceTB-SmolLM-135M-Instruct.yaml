@@ -1,9 +1,0 @@
-# conf/model/HuggingFaceTB-SmolLM-135M-Instruct.yaml
-# @package _global_
-
-name: "HuggingFaceTB/SmolLM-135M-Instruct"
-
-inference:
-  max_model_len: None   
-  sampling:
-    temperature: 0.0
