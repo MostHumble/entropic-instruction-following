@@ -90,13 +90,12 @@ def main(cfg: DictConfig):
         case = filtered_dataset[i]
         generated_text = output.outputs[0].text
         stats = Evaluator.score_strict(case['words'], generated_text)
-        
         results.append({
             "id": case['id'],
             "type": case['type'],
             "pattern": case['pattern'],
             "count": case['count'],
-            "strategy": strategy.name,
+            "strategy": cfg.strategy.name,
             "model": cfg.model.name,
             "score": stats['score'],
             "passed_count": stats['passed_count'],
@@ -117,7 +116,7 @@ def main(cfg: DictConfig):
     pattern_suffix = f"_{'_'.join(cfg.experiment.patterns)}" if cfg.experiment.patterns else "_all"
     results_path = os.path.join(
         results_dir, 
-        f"results_{strategy.name}_{cfg.model.name.replace('/', '_')}{pattern_suffix}.csv"
+        f"results_{cfg.strategy.name}_{cfg.model.name.replace('/', '_')}{pattern_suffix}.csv"
     )
     df.to_csv(results_path, index=False)
     logger.info(f"Saved {len(results)} results to {results_path}")
