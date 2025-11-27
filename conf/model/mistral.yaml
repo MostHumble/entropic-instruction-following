@@ -2,8 +2,3 @@
 
 model:
   name: "mistralai/Mistral-Nemo-Instruct-2407"
-
-inference:
-  max_model_len: 128000  
-  sampling:
-    temperature: 0.1 

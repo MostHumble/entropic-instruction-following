@@ -1,0 +1,4 @@
+# conf/model/olmo.yaml
+
+model:
+  name: allenai/Olmo-3-7B-Instruct

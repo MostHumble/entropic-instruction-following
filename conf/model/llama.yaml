@@ -2,8 +2,3 @@
 
 model:
   name: "meta-llama/Meta-Llama-3-8B-Instruct"
-
-inference:
-  max_model_len: 8192    # Override base 16000
-  sampling:
-    temperature: 0.6     # Llama might need higher temp

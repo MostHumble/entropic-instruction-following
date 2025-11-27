@@ -2,15 +2,13 @@ import hydra
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 from dotenv import load_dotenv
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from typing import List
 
 import torch
 import pandas as pd
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from huggingface_hub import login
 from vllm import LLM, SamplingParams
 
@@ -27,68 +25,91 @@ if not HF_TOKEN:
 else:
     login(token=HF_TOKEN)
 
-@hydra.main(version_base=None, config_path="../conf", config_name="config")
-def main(cfg: DictConfig):
-    # Check device availability
-    if not torch.cuda.is_available():
-        logger.warning("CUDA GPU not available. vLLM may not work or will be very slow on CPU.")
+
+def get_available_models(conf_path: str = "conf/model") -> List[str]:
+    """Get list of available model configs"""
+    model_dir = Path(conf_path)
+    models = [f.stem for f in model_dir.glob("*.yaml")]
+    return sorted(models)
+
+
+def load_model_config(model_name: str, base_cfg: DictConfig) -> DictConfig:
+    """Load model-specific config and merge with base config"""
+    model_cfg_path = Path(f"conf/model/{model_name}.yaml")
     
-    # 1. Load strategy
-    strategy = get_strategy(cfg.strategy.name)
-    logger.info(f"Strategy: {cfg.strategy.name}")
-    logger.info(f"Model: {cfg.model.name}")
-    logger.info(f"Max model len: {cfg.inference.max_model_len}")
-    logger.info(f"Temperature: {cfg.inference.sampling.temperature}")
+    if not model_cfg_path.exists():
+        raise FileNotFoundError(f"Model config not found: {model_cfg_path}")
+    
+    with open(model_cfg_path) as f:
+        model_cfg = OmegaConf.load(f)
+    
+    # Merge model config into base config
+    cfg = OmegaConf.merge(base_cfg, model_cfg)
+    return cfg
 
-    # 2. Load dataset
-    dataset = load_dataset(cfg.word_data_generator.dataset_path)
-    logger.info(f"Loaded {len(dataset)} samples")
 
-    # 3. Filter dataset by rule counts and patterns
-    # Use experiment.rule_counts if specified, otherwise use all rule_counts from word_data_generator
+def run_inference_for_model(
+    model_name: str,
+    cfg: DictConfig,
+    dataset: List[dict],
+    strategy,
+    results_dir: Path
+) -> str:
+    """Run inference for a single model and return results path"""
+    
+    logger.info(f"\n{'='*70}")
+    logger.info(f"Running inference for model: {model_name}")
+    logger.info(f"{'='*70}")
+    
+    # Load model-specific config
+    model_cfg = load_model_config(model_name, cfg)
+    
+    logger.info(f"Model: {model_cfg.model.name}")
+    logger.info(f"Max model len: {model_cfg.inference.max_model_len}")
+    logger.info(f"Temperature: {model_cfg.inference.sampling.temperature}")
+    
+    # Filter dataset by rule counts and patterns
     rule_counts_to_test = (
-        cfg.experiment.rule_counts
-        if cfg.experiment.rule_counts is not None
-        else cfg.word_data_generator.rule_counts
+        model_cfg.experiment.rule_counts
+        if model_cfg.experiment.rule_counts is not None
+        else model_cfg.word_data_generator.rule_counts
     )
     patterns_to_test = (
-        cfg.experiment.patterns
-        if cfg.experiment.patterns is not None
-        else cfg.word_data_generator.patterns
+        model_cfg.experiment.patterns
+        if model_cfg.experiment.patterns is not None
+        else model_cfg.word_data_generator.patterns
     )
-
+    
     filtered_dataset = [
         case for case in dataset 
         if case['count'] in rule_counts_to_test
         and case.get('pattern') in patterns_to_test
     ]
-
+    
     logger.info(f"Testing rule counts: {rule_counts_to_test}")
     logger.info(f"Testing patterns: {patterns_to_test}")
     prompts = [strategy.build_prompt(case['words']) for case in filtered_dataset]
     logger.info(f"Filtered to {len(filtered_dataset)} samples for testing")
-
-    # 4. Initialize vLLM
-    logger.info(f"Context window: {cfg.inference.max_model_len}")
-    logger.info(f"Temperature: {cfg.inference.sampling.temperature}")
     
+    # Initialize vLLM
+    logger.info("Initializing vLLM...")
     llm = LLM(
-        model=cfg.model.name,
-        max_model_len=cfg.inference.max_model_len,
-        trust_remote_code=cfg.inference.trust_remote_code,
+        model=model_cfg.model.name,
+        max_model_len=model_cfg.inference.max_model_len,
+        trust_remote_code=model_cfg.inference.trust_remote_code,
     )
-
+    
     sampling_params = SamplingParams(
-        temperature=cfg.inference.sampling.temperature,
-        top_p=cfg.inference.sampling.top_p,
-        max_tokens=cfg.inference.sampling.max_tokens
+        temperature=model_cfg.inference.sampling.temperature,
+        top_p=model_cfg.inference.sampling.top_p,
+        max_tokens=model_cfg.inference.sampling.max_tokens
     )
-
-    # 5. Generate outputs
+    
+    # Generate outputs
     logger.info("Generating outputs...")
     outputs = llm.generate(prompts, sampling_params)
-
-    # 6. Evaluate & save results
+    
+    # Evaluate & save results
     results = []
     for i, output in enumerate(outputs):
         case = filtered_dataset[i]
@@ -98,10 +119,11 @@ def main(cfg: DictConfig):
         results.append({
             "id": case['id'],
             "type": case['type'],
-            "pattern": case['pattern'],
+            "pattern": case.get('pattern', 'unknown'),
             "count": case['count'],
-            "strategy": cfg.strategy.name,
-            "model": cfg.model.name,
+            "strategy": strategy.name,
+            "model": model_name,
+            "model_name_full": model_cfg.model.name,
             "score": stats['score'],
             "passed_count": stats['passed_count'],
             "total_count": stats['total_count'],
@@ -111,20 +133,72 @@ def main(cfg: DictConfig):
             "word_details": json.dumps(stats['word_details']),
             "generated_text": generated_text
         })
-
-    # Save results
-    df = pd.DataFrame(results)
-    results_dir = cfg.experiment.results_dir
-    os.makedirs(results_dir, exist_ok=True)
     
-    # Include pattern filter in filename if specified
-    pattern_suffix = f"_{'_'.join(cfg.experiment.patterns)}" if cfg.experiment.patterns else "_all"
-    results_path = os.path.join(
-        results_dir, 
-        f"results_{cfg.strategy.name}_{cfg.model.name.replace('/', '_')}{pattern_suffix}.csv"
-    )
+    # Save results for this model
+    df = pd.DataFrame(results)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    
+    results_path = results_dir / f"results_{strategy.name}_{model_name}.csv"
     df.to_csv(results_path, index=False)
     logger.info(f"Saved {len(results)} results to {results_path}")
+    
+    return str(results_path)
+
+
+@hydra.main(version_base=None, config_path="conf", config_name="config")
+def main(cfg: DictConfig):
+    """Run inference on multiple models"""
+    
+    # Check device availability
+    if not torch.cuda.is_available():
+        logger.warning("CUDA GPU not available. vLLM may be very slow on CPU.")
+    
+    # Determine which models to test
+    available_models = get_available_models()
+    
+    if cfg.experiment.models is None:
+        models_to_test = available_models
+    else:
+        models_to_test = cfg.experiment.models
+    
+    logger.info(f"Available models: {available_models}")
+    logger.info(f"Testing models: {models_to_test}")
+    
+    # Load strategy
+    strategy = get_strategy(cfg.strategy.name)
+    logger.info(f"Strategy: {cfg.strategy.name}")
+    
+    # Load dataset once
+    dataset = load_dataset(cfg.word_data_generator.dataset_path)
+    logger.info(f"Loaded {len(dataset)} samples")
+    
+    # Results directory
+    results_dir = Path(cfg.experiment.results_dir)
+    
+    # Run inference for each model
+    results_files = []
+    for model_name in models_to_test:
+        try:
+            results_file = run_inference_for_model(
+                model_name,
+                cfg,
+                dataset,
+                strategy,
+                results_dir
+            )
+            results_files.append(results_file)
+        except Exception as e:
+            logger.error(f"Failed to run inference for model {model_name}: {e}")
+            continue
+    
+    # Summary
+    logger.info(f"\n{'='*70}")
+    logger.info(f"EXPERIMENT COMPLETE")
+    logger.info(f"{'='*70}")
+    logger.info(f"Models tested: {len(results_files)}/{len(models_to_test)}")
+    logger.info(f"Results saved to:")
+    for rf in results_files:
+        logger.info(f"  - {rf}")
 
 
 if __name__ == "__main__":

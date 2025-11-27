@@ -1,12 +1,12 @@
 defaults:
   - _self_
-  - model: HuggingFaceTB-SmolLM-135M-Instruct.yaml
   - strategy: standard.yaml
 
 experiment:
   rule_counts: [200] # null = test all counts, or specify list like [50, 100, 200]
   patterns: ["c|r", "r|c|r", "cr", "r", "c"]  # null = test all patterns, or specify list like ["c", "r", "cr"]
   results_dir: "data/results"
+  models: null  # null = use all models in conf/model/, or specify list like ["mistral", "llama"]
 
 word_data_generator:
   dataset_path: "data/raw/dataset_v1.json"
