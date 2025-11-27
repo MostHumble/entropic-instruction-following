@@ -40,8 +40,27 @@ def main(cfg: DictConfig):
     dataset = load_dataset(cfg.word_data_generator.dataset_path)
     logger.info(f"Loaded {len(dataset)} samples")
 
-    # 3. Filter dataset and build prompts
-    filtered_dataset = [case for case in dataset if case['count'] in cfg.experiment.rule_counts]
+    # 3. Filter dataset by rule counts and patterns
+    # Use experiment.rule_counts if specified, otherwise use all rule_counts from word_data_generator
+    rule_counts_to_test = (
+        cfg.experiment.rule_counts
+        if cfg.experiment.rule_counts is not None
+        else cfg.word_data_generator.rule_counts
+    )
+    patterns_to_test = (
+        cfg.experiment.patterns
+        if cfg.experiment.patterns is not None
+        else cfg.word_data_generator.patterns
+    )
+
+    filtered_dataset = [
+        case for case in dataset 
+        if case['count'] in rule_counts_to_test
+        and case.get('pattern') in patterns_to_test
+    ]
+
+    logger.info(f"Testing rule counts: {rule_counts_to_test}")
+    logger.info(f"Testing patterns: {patterns_to_test}")
     prompts = [strategy.build_prompt(case['words']) for case in filtered_dataset]
     logger.info(f"Filtered to {len(filtered_dataset)} samples for testing")
 
@@ -75,6 +94,7 @@ def main(cfg: DictConfig):
         results.append({
             "id": case['id'],
             "type": case['type'],
+            "pattern": case['pattern'],
             "count": case['count'],
             "strategy": strategy.name,
             "model": cfg.model.name,
@@ -92,9 +112,15 @@ def main(cfg: DictConfig):
     df = pd.DataFrame(results)
     results_dir = cfg.experiment.results_dir
     os.makedirs(results_dir, exist_ok=True)
-    results_path = os.path.join(results_dir, f"results_{strategy.name}_{cfg.model.name.replace('/', '_')}.csv")
+    
+    # Include pattern filter in filename if specified
+    pattern_suffix = f"_{'_'.join(cfg.experiment.patterns)}" if cfg.experiment.patterns else "_all"
+    results_path = os.path.join(
+        results_dir, 
+        f"results_{strategy.name}_{cfg.model.name.replace('/', '_')}{pattern_suffix}.csv"
+    )
     df.to_csv(results_path, index=False)
-    logger.info(f"Saved results to {results_path}")
+    logger.info(f"Saved {len(results)} results to {results_path}")
 
 
 if __name__ == "__main__":
