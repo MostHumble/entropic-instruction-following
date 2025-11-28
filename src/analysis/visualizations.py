@@ -197,148 +197,6 @@ class ResultsVisualizer:
                    dpi=300, bbox_inches='tight')
         plt.close()
     
-    def plot_follow_rate_comparison_clean(self):
-        """Clean comparison: One plot PER rule count, patterns compared within"""
-        rule_counts = sorted(self.expanded_df['count'].unique())
-        
-        n_counts = len(rule_counts)
-        fig, axes = plt.subplots(1, n_counts, figsize=(7*n_counts, 6), sharey=True)
-        if n_counts == 1:
-            axes = [axes]
-        
-        for count_idx, count in enumerate(rule_counts):
-            ax = axes[count_idx]
-            count_data = self.expanded_df[self.expanded_df['count'] == count].copy()
-            
-            patterns = sorted(count_data['pattern'].unique())
-            
-            for pattern in patterns:
-                pattern_data = count_data[count_data['pattern'] == pattern].copy()
-                
-                max_pos = pattern_data['position_in_rule'].max()
-                pattern_data['position_pct'] = (pattern_data['position_in_rule'] / max_pos * 100)
-                
-                position_stats = pattern_data.groupby(['position_pct', 'trial_id'])['found'].mean().reset_index()
-                position_agg = position_stats.groupby('position_pct').agg({
-                    'found': ['mean', 'sem', 'count']
-                }).reset_index()
-                
-                position_agg.columns = ['position_pct', 'mean', 'sem', 'count']
-                
-                step = max(1, len(position_agg) // 40)
-                plot_data = position_agg.iloc[::step]
-                
-                color = self.color_map.get(pattern, '#1f77b4')
-                n_trials = int(position_agg['count'].iloc[0])
-                
-                ax.plot(plot_data['position_pct'], plot_data['mean'], 
-                       marker='o', linewidth=2, markersize=4, 
-                       color=color, alpha=0.8,
-                       label=f"{pattern} (n={n_trials})")
-            
-            ax.set_xlabel("Position in Rule (%)", fontsize=12)
-            ax.set_ylabel("Follow Rate", fontsize=12)
-            ax.set_title(f"Rule Length: {count} words", fontsize=13, fontweight='bold')
-            ax.legend(title="Pattern", loc='best', fontsize=9, framealpha=0.9)
-            ax.grid(True, alpha=0.3, linestyle='--')
-            ax.set_ylim(-0.05, 1.05)
-            ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-        
-        plt.suptitle("Follow Rate Comparison (Normalized by Rule Length)", fontsize=15, fontweight='bold')
-        plt.tight_layout()
-        plt.savefig(self.output_dir / "01c_follow_rate_comparison_clean.png", 
-                   dpi=300, bbox_inches='tight')
-        plt.close()
-    
-    def plot_follow_rate_by_pattern_and_position(self):
-        """Combined view with percentiles (backward compatibility)"""
-        # WARNING: This mixes different rule counts - use new plots instead!
-        rule_counts = sorted(self.expanded_df['count'].unique())
-        
-        if len(rule_counts) > 1:
-            print(f"⚠️  Warning: This plot mixes rule counts {rule_counts}. Use plot_follow_rate_comparison_clean() instead.")
-        
-        fig, axes = plt.subplots(2, 1, figsize=(14, 10))
-        
-        max_position = self.expanded_df['position_in_rule'].max()
-        rule_length = max_position + 1
-        
-        ax1 = axes[0]
-        
-        patterns = sorted(self.expanded_df['pattern'].unique())
-        
-        for pattern in patterns:
-            pattern_data = self.expanded_df[self.expanded_df['pattern'] == pattern]
-            
-            position_stats = pattern_data.groupby(['position_in_rule', 'trial_id'])['found'].mean().reset_index()
-            position_agg = position_stats.groupby('position_in_rule').agg(
-                mean=('found', 'mean'),
-                sem=('found', 'sem'),
-                n=('found', 'count')
-            ).reset_index()
-            
-            position_agg['position_pct'] = (position_agg['position_in_rule'] / max_position) * 100
-            
-            step = max(1, len(position_agg) // 40)
-            plot_data = position_agg.iloc[::step]
-            
-            color = self.color_map.get(pattern, '#1f77b4')
-            n_trials = int(plot_data['n'].iloc[0])
-            
-            ax1.plot(plot_data['position_pct'], plot_data['mean'], 
-                    marker='o', label=f"{pattern} (n={n_trials} trials)", 
-                    linewidth=2, markersize=4, alpha=0.8, color=color)
-            
-            ax1.fill_between(
-                plot_data['position_pct'],
-                plot_data['mean'] - 1.96 * plot_data['sem'],
-                plot_data['mean'] + 1.96 * plot_data['sem'],
-                alpha=0.2, color=color
-            )
-        
-        ax1.set_xlabel("Position in Rule (%)", fontsize=12)
-        ax1.set_ylabel("Follow Rate", fontsize=12)
-        ax1.set_title(f"Follow Rate by Pattern (Max Rule Length: {rule_length} words, with 95% CI)", 
-                     fontsize=14, fontweight='bold')
-        ax1.legend(title="Pattern", loc='best', fontsize=9, ncol=2)
-        ax1.grid(True, alpha=0.3, linestyle='--')
-        ax1.set_ylim(-0.05, 1.05)
-        ax1.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-        
-        ax2 = axes[1]
-        
-        trial_agg = self.expanded_df.groupby(['pattern', 'position_in_rule', 'trial_id'])['found'].mean().reset_index()
-        final_agg = trial_agg.groupby(['pattern', 'position_in_rule'])['found'].mean().reset_index()
-        
-        final_agg['position_bin'] = pd.cut(
-            final_agg['position_in_rule'], 
-            bins=10, 
-            labels=[f'{i*10}-{(i+1)*10}%' for i in range(10)],
-            duplicates='drop'
-        )
-        
-        heatmap_data = final_agg.groupby(['pattern', 'position_bin'], observed=True)['found'].mean().unstack() 
-        
-        sns.heatmap(
-            heatmap_data, 
-            cmap='RdYlGn', 
-            cbar_kws={'label': 'Follow Rate'},
-            ax=ax2,
-            vmin=0,
-            vmax=1,
-            linewidths=0.5,
-            linecolor='white',
-            annot=False
-        )
-        
-        ax2.set_xlabel("Position in Rule (Deciles)", fontsize=12)
-        ax2.set_ylabel("Pattern Type", fontsize=12)
-        ax2.set_title("Follow Rate Heatmap (Aggregated Across Trials)", fontsize=14, fontweight='bold')
-        
-        plt.tight_layout()
-        plt.savefig(self.output_dir / "01_follow_rate_by_position_pattern.png", dpi=300, bbox_inches='tight')
-        plt.close()
-    
     def plot_pattern_performance_overview(self):
         """Bar plot: Overall pattern performance BY RULE COUNT"""
         fig, ax = plt.subplots(figsize=(14, 6))
@@ -382,134 +240,35 @@ class ResultsVisualizer:
         plt.savefig(self.output_dir / "01d_pattern_performance_by_count.png", 
                    dpi=300, bbox_inches='tight')
         plt.close()
-    
-    def plot_follow_rate_by_component_type(self):
-        """Bar plot: Follow rate by component type (coherent vs random)"""
-        import re
-        
-        def get_component_type(row):
-            pattern = row['pattern']
-            position = row['position_in_rule']
-            
-            if '|' in pattern:
-                components = pattern.split('|')
-            else:
-                components = re.findall(r'[cr]\d*', pattern)
-            
-            if len(components) == 0:
-                return 'unknown'
-            
-            component = components[position % len(components)]
-            return component
-        
-        self.expanded_df['component_type'] = self.expanded_df.apply(get_component_type, axis=1)
-        
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        component_stats = self.expanded_df.groupby('component_type')['found'].agg(
-            total='sum',      
-            n='count',         
-            mean='mean',
-            std='std'
-        ).reset_index()
-        component_stats = component_stats.sort_values('mean', ascending=False)
-        
-        # Dynamic color assignment
-        component_colors = self._get_component_colors(component_stats['component_type'].tolist())
-        colors = [component_colors[ct] for ct in component_stats['component_type']]
-        
-        ax.barh(component_stats['component_type'], component_stats['mean'], 
-                color=colors, alpha=0.7)
-        
-        ax.set_xlabel("Follow Rate", fontsize=12)
-        ax.set_ylabel("Component Type", fontsize=12)
-        ax.set_title("Follow Rate by Component Type (Coherent vs Random)", fontsize=14, fontweight='bold')
-        ax.set_xlim(0, 1)
-        ax.axvline(x=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-        ax.grid(axis='x', alpha=0.3)
-        
-        for i, (ct, mean, n) in enumerate(zip(component_stats['component_type'], 
-                                               component_stats['mean'],
-                                               component_stats['n'])):
-            ax.text(mean + 0.02, i, f'{mean:.1%} (n={int(n)})', 
-                   va='center', fontsize=10, fontweight='bold')
-        
-        plt.tight_layout()
-        plt.savefig(self.output_dir / "03_follow_rate_by_component_type.png", dpi=300, bbox_inches='tight')
-        plt.close()
-    
-    def plot_primacy_recency_bias(self):
-        """Line plots: Primacy & Recency bias analysis"""
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        
-        self.expanded_df['position_quintile'] = pd.qcut(
-            self.expanded_df['position_in_rule'], 
-            q=5, 
-            duplicates='drop', 
-            labels=['1st', '2nd', '3rd', '4th', '5th']
-        )
-        
-        quintile_follow = self.expanded_df.groupby('position_quintile')['found'].agg(
-            total='sum',      
-            n='count',
-            mean='mean',
-            std='std'
-        ).reset_index()
-        quintile_follow['follow_rate'] = quintile_follow['mean']
-        
-        axes[0].bar(range(len(quintile_follow)), quintile_follow['follow_rate'], 
-                   color='steelblue', alpha=0.7, edgecolor='black')
-        axes[0].set_xticks(range(len(quintile_follow)))
-        axes[0].set_xticklabels(quintile_follow['position_quintile'])
-        axes[0].set_ylabel("Follow Rate", fontsize=12)
-        axes[0].set_xlabel("Position Quintile", fontsize=12)
-        axes[0].set_title("Primacy & Recency Effect", fontsize=14, fontweight='bold')
-        axes[0].set_ylim(0, 1)
-        axes[0].axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-        axes[0].grid(axis='y', alpha=0.3)
-        
-        for i, rate in enumerate(quintile_follow['follow_rate']):
-            axes[0].text(i, rate + 0.03, f'{rate:.1%}', ha='center', fontweight='bold')
-        
-        pattern_quintile = self.expanded_df.groupby(['pattern', 'position_quintile'], observed=True)['found'].mean().unstack()
-        pattern_quintile.plot(kind='bar', ax=axes[1], alpha=0.8, width=0.8, edgecolor='black')
-        axes[1].set_ylabel("Follow Rate", fontsize=12)
-        axes[1].set_xlabel("Pattern Type", fontsize=12)
-        axes[1].set_title("Follow Rate by Position Quintile (per Pattern)", fontsize=14, fontweight='bold')
-        axes[1].set_ylim(0, 1)
-        axes[1].legend(title='Position Quintile', bbox_to_anchor=(1.05, 1))
-        axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=45, ha='right')
-        axes[1].grid(axis='y', alpha=0.3)
-        
-        plt.tight_layout()
-        plt.savefig(self.output_dir / "04_primacy_recency_bias.png", dpi=300, bbox_inches='tight')
-        plt.close()
-    
+
     def plot_rule_position_vs_text_position(self):
-        """Scatter plots: Rule position vs position in text"""
-        patterns = sorted(self.expanded_df['pattern'].unique())
-        n_patterns = len(patterns)
+        """Scatter plots: Rule position vs position in text, separated by count"""
+        # Group by both pattern and count
+        grouped = self.expanded_df.groupby(['pattern', 'count'])
+        n_groups = len(grouped)
+        
         n_cols = 3
-        n_rows = (n_patterns + n_cols - 1) // n_cols
+        n_rows = (n_groups + n_cols - 1) // n_cols
         
         fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
-        if n_patterns == 1:
+        if n_groups == 1:
             axes = [axes]
         else:
             axes = axes.flatten()
         
-        for idx, pattern in enumerate(patterns):
+        for idx, ((pattern, count), group_data) in enumerate(grouped):
             ax = axes[idx]
-            pattern_data = self.expanded_df[
-                (self.expanded_df['pattern'] == pattern) & 
-                (self.expanded_df['found'] == True) &
-                (self.expanded_df['occurrences'] > 0)
+            
+            # Filter to only found words with positions
+            pattern_data = group_data[
+                (group_data['found'] == True) &
+                (group_data['occurrences'] > 0)
             ].copy()
             
             if len(pattern_data) == 0:
-                ax.text(0.5, 0.5, f"No data for pattern: {pattern}", 
-                       ha='center', va='center', transform=ax.transAxes)
-                ax.set_title(f"Pattern: {pattern}")
+                ax.text(0.5, 0.5, f"No data\nPattern: {pattern}\nCount: {count}", 
+                       ha='center', va='center', transform=ax.transAxes, fontsize=10)
+                ax.set_title(f"{pattern} ({count} words)")
                 continue
             
             pattern_data['first_pos_in_text'] = pattern_data['positions_in_text'].apply(
@@ -518,22 +277,25 @@ class ResultsVisualizer:
             pattern_data = pattern_data[pattern_data['first_pos_in_text'] >= 0]
             
             if len(pattern_data) == 0:
-                ax.text(0.5, 0.5, f"No valid positions for: {pattern}", 
-                       ha='center', va='center', transform=ax.transAxes)
-                ax.set_title(f"Pattern: {pattern}")
+                ax.text(0.5, 0.5, f"No valid positions\nPattern: {pattern}\nCount: {count}", 
+                       ha='center', va='center', transform=ax.transAxes, fontsize=10)
+                ax.set_title(f"{pattern} ({count} words)")
                 continue
+            
+            # Use pattern color
+            color = self.color_map.get(pattern, 'steelblue')
             
             ax.scatter(
                 pattern_data['position_in_rule'], 
                 pattern_data['first_pos_in_text'],
                 alpha=0.5, 
                 s=50,
-                c=pattern_data['position_in_rule'],
-                cmap='viridis',
+                c=[color] * len(pattern_data),
                 edgecolors='black',
                 linewidths=0.5
             )
             
+            # Add trend line if enough data
             if len(pattern_data) > 2:
                 z = np.polyfit(pattern_data['position_in_rule'], 
                               pattern_data['first_pos_in_text'], 1)
@@ -542,46 +304,314 @@ class ResultsVisualizer:
                                      pattern_data['position_in_rule'].max(), 100)
                 ax.plot(x_trend, p(x_trend), "r--", alpha=0.8, linewidth=2, 
                        label=f'Trend (slope={z[0]:.2f})')
+                
+                # Calculate correlation
+                corr = np.corrcoef(pattern_data['position_in_rule'], 
+                                  pattern_data['first_pos_in_text'])[0, 1]
+                ax.text(0.05, 0.95, f'r={corr:.3f}', 
+                       transform=ax.transAxes, 
+                       verticalalignment='top',
+                       bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
             
             ax.set_xlabel("Position in Rule", fontsize=10)
             ax.set_ylabel("Character Position in Text", fontsize=10)
-            ax.set_title(f"Pattern: {pattern}", fontsize=12, fontweight='bold')
-            ax.legend(fontsize=8)
+            ax.set_title(f"Pattern: {pattern}, Count: {count}", fontsize=11, fontweight='bold')
+            if len(pattern_data) > 2:
+                ax.legend(fontsize=8)
             ax.grid(True, alpha=0.3)
         
-        for idx in range(n_patterns, len(axes)):
+        for idx in range(n_groups, len(axes)):
             axes[idx].axis('off')
         
+        plt.suptitle("Rule Position vs Text Position (Separated by Pattern and Count)", 
+                    fontsize=15, fontweight='bold', y=1.00)
         plt.tight_layout()
-        plt.savefig(self.output_dir / "02_rule_position_vs_text_position.png", dpi=300, bbox_inches='tight')
+        plt.savefig(self.output_dir / "02_rule_position_vs_text_position.png", 
+                   dpi=300, bbox_inches='tight')
         plt.close()
+    
+    def plot_model_comparison_comprehensive(self):
+        """Comprehensive model comparison across multiple dimensions"""
+        models = sorted(self.df['model'].unique()) if 'model' in self.df.columns else None
+        
+        if models is None or len(models) <= 1:
+            print("⚠️  Skipping model comparison - only one model or 'model' column missing")
+            return
+        
+        fig = plt.figure(figsize=(20, 12))
+        gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+        
+        # 1. Overall performance by pattern (grouped bar)
+        ax1 = fig.add_subplot(gs[0, :2])
+        self._plot_model_pattern_comparison(ax1)
+        
+        # 2. Performance by rule length (line plot)
+        ax2 = fig.add_subplot(gs[0, 2])
+        self._plot_model_by_rule_length(ax2)
+        
+        # 3. Position-based follow rate (line plot)
+        ax3 = fig.add_subplot(gs[1, :])
+        self._plot_model_position_comparison(ax3)
+        
+        # 4. Primacy/Recency effect comparison (bar)
+        ax4 = fig.add_subplot(gs[2, 0])
+        self._plot_model_primacy_recency(ax4)
+        
+        # 5. Coherent vs Random performance (radar/bar)
+        ax5 = fig.add_subplot(gs[2, 1])
+        self._plot_model_coherent_vs_random(ax5)
+        
+        # 6. Summary statistics table
+        ax6 = fig.add_subplot(gs[2, 2])
+        self._plot_model_summary_table(ax6)
+        
+        plt.suptitle("Model Comparison: Comprehensive Analysis", 
+                    fontsize=18, fontweight='bold', y=0.995)
+        plt.savefig(self.output_dir / "05_model_comparison_comprehensive.png", 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def _plot_model_pattern_comparison(self, ax):
+        """Compare models across patterns"""
+        models = sorted(self.df['model'].unique())
+        patterns = sorted(self.expanded_df['pattern'].unique())
+        
+        model_pattern_scores = self.expanded_df.groupby(['model', 'pattern'])['found'].agg(
+            mean='mean',
+            sem='sem'
+        ).reset_index()
+        
+        x = np.arange(len(patterns))
+        width = 0.8 / len(models)
+        
+        colors = plt.cm.Set2(np.linspace(0, 1, len(models)))
+        
+        for idx, model in enumerate(models):
+            model_data = model_pattern_scores[model_pattern_scores['model'] == model]
+            model_data = model_data.set_index('pattern').reindex(patterns).reset_index()
+            
+            offset = (idx - len(models)/2 + 0.5) * width
+            ax.bar(x + offset, model_data['mean'], width,
+                   label=model, alpha=0.8,
+                   yerr=1.96 * model_data['sem'], capsize=3,
+                   color=colors[idx])
+        
+        ax.set_xlabel("Pattern Type", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Performance by Pattern (with 95% CI)", fontsize=12, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(patterns, rotation=45, ha='right')
+        ax.legend(title="Model", loc='best', fontsize=9)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+    
+    def _plot_model_by_rule_length(self, ax):
+        """Compare models across rule lengths"""
+        model_count_scores = self.expanded_df.groupby(['model', 'count'])['found'].agg(
+            mean='mean',
+            sem='sem'
+        ).reset_index()
+        
+        models = sorted(model_count_scores['model'].unique())
+        colors = plt.cm.Set2(np.linspace(0, 1, len(models)))
+        
+        for idx, model in enumerate(models):
+            model_data = model_count_scores[model_count_scores['model'] == model].sort_values('count')
+            ax.plot(model_data['count'], model_data['mean'], 
+                   marker='o', linewidth=2, markersize=8,
+                   label=model, color=colors[idx], alpha=0.8)
+            ax.fill_between(
+                model_data['count'],
+                model_data['mean'] - 1.96 * model_data['sem'],
+                model_data['mean'] + 1.96 * model_data['sem'],
+                alpha=0.2, color=colors[idx]
+            )
+        
+        ax.set_xlabel("Rule Length (words)", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Scaling with Rule Length", fontsize=12, fontweight='bold')
+        ax.legend(title="Model", fontsize=8)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(True, alpha=0.3)
+    
+    def _plot_model_position_comparison(self, ax):
+        """Compare models' follow rate across positions (normalized)"""
+        models = sorted(self.expanded_df['model'].unique())
+        colors = plt.cm.Set2(np.linspace(0, 1, len(models)))
+        
+        for idx, model in enumerate(models):
+            model_data = self.expanded_df[self.expanded_df['model'] == model].copy()
+            
+            # Normalize positions to 0-100%
+            max_pos = model_data['position_in_rule'].max()
+            model_data['position_pct'] = (model_data['position_in_rule'] / max_pos * 100).astype(int)
+            
+            position_stats = model_data.groupby(['position_pct', 'trial_id'])['found'].mean().reset_index()
+            position_agg = position_stats.groupby('position_pct').agg(
+                mean=('found', 'mean'),
+                sem=('found', 'sem')
+            ).reset_index()
+            
+            # Sample every 5th point for clarity
+            step = max(1, len(position_agg) // 20)
+            plot_data = position_agg.iloc[::step]
+            
+            ax.plot(plot_data['position_pct'], plot_data['mean'], 
+                   marker='o', linewidth=2, markersize=4,
+                   label=model, color=colors[idx], alpha=0.8)
+        
+        ax.set_xlabel("Position in Rule (%)", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Position-Based Follow Rate (Normalized)", fontsize=12, fontweight='bold')
+        ax.legend(title="Model", loc='best', fontsize=9)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(True, alpha=0.3)
+    
+    def _plot_model_primacy_recency(self, ax):
+        """Compare primacy/recency effects across models"""
+        models = sorted(self.expanded_df['model'].unique())
+        
+        # Create quintiles
+        self.expanded_df['position_quintile'] = pd.qcut(
+            self.expanded_df['position_in_rule'], 
+            q=5, 
+            duplicates='drop', 
+            labels=['1st', '2nd', '3rd', '4th', '5th']
+        )
+        
+        model_quintile = self.expanded_df.groupby(['model', 'position_quintile'], observed=True)['found'].mean().unstack()
+        
+        model_quintile.plot(kind='bar', ax=ax, alpha=0.8, width=0.8)
+        ax.set_xlabel("Model", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Primacy/Recency Effect", fontsize=12, fontweight='bold')
+        ax.set_ylim(0, 1.0)
+        ax.legend(title='Position', fontsize=8, ncol=2)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+    
+    def _plot_model_coherent_vs_random(self, ax):
+        """Compare coherent vs random performance"""
+        import re
+        
+        def classify_pattern(pattern):
+            if pattern == 'c' or (pattern.startswith('c') and 'r' not in pattern):
+                return 'Coherent'
+            elif pattern == 'r' or (pattern.startswith('r') and 'c' not in pattern):
+                return 'Random'
+            else:
+                return 'Mixed'
+        
+        self.expanded_df['pattern_type'] = self.expanded_df['pattern'].apply(classify_pattern)
+        
+        model_type_scores = self.expanded_df.groupby(['model', 'pattern_type'])['found'].agg(
+            mean='mean',
+            sem='sem'
+        ).reset_index()
+        
+        models = sorted(model_type_scores['model'].unique())
+        pattern_types = ['Coherent', 'Random', 'Mixed']
+        
+        x = np.arange(len(models))
+        width = 0.25
+        
+        colors = {'Coherent': '#2ca02c', 'Random': '#d62728', 'Mixed': '#ff7f0e'}
+        
+        for idx, ptype in enumerate(pattern_types):
+            type_data = model_type_scores[model_type_scores['pattern_type'] == ptype]
+            type_data = type_data.set_index('model').reindex(models).reset_index()
+            
+            offset = (idx - 1) * width
+            ax.bar(x + offset, type_data['mean'], width,
+                   label=ptype, alpha=0.8,
+                   yerr=1.96 * type_data['sem'], capsize=3,
+                   color=colors.get(ptype, 'gray'))
+        
+        ax.set_xlabel("Model", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Coherent vs Random", fontsize=12, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(models, rotation=45, ha='right')
+        ax.legend(title="Pattern Type", fontsize=8)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+    
+    def _plot_model_summary_table(self, ax):
+        """Summary statistics table"""
+        ax.axis('off')
+        
+        summary_stats = []
+        for model in sorted(self.df['model'].unique()):
+            model_expanded = self.expanded_df[self.expanded_df['model'] == model]
+            
+            overall_mean = model_expanded['found'].mean()
+            overall_std = model_expanded['found'].std()
+            
+            # Best pattern
+            pattern_means = model_expanded.groupby('pattern')['found'].mean()
+            best_pattern = pattern_means.idxmax()
+            best_score = pattern_means.max()
+            
+            # Worst pattern
+            worst_pattern = pattern_means.idxmin()
+            worst_score = pattern_means.min()
+            
+            summary_stats.append([
+                model.split('/')[-1][:20],  # Short name
+                f'{overall_mean:.1%}',
+                f'{best_pattern}\n({best_score:.1%})',
+                f'{worst_pattern}\n({worst_score:.1%})'
+            ])
+        
+        table = ax.table(
+            cellText=summary_stats,
+            colLabels=['Model', 'Overall', 'Best Pattern', 'Worst Pattern'],
+            cellLoc='center',
+            loc='center',
+            bbox=[0, 0, 1, 1]
+        )
+        
+        table.auto_set_font_size(False)
+        table.set_fontsize(9)
+        table.scale(1, 2)
+        
+        # Style header
+        for i in range(4):
+            table[(0, i)].set_facecolor('#4CAF50')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+        
+        # Alternate row colors
+        for i in range(1, len(summary_stats) + 1):
+            for j in range(4):
+                if i % 2 == 0:
+                    table[(i, j)].set_facecolor('#f0f0f0')
+        
+        ax.set_title("Summary Statistics", fontsize=12, fontweight='bold', pad=20)
     
     def create_all(self):
         """Generate all visualizations"""
         print("Generating visualizations...")
         
         self.plot_follow_rate_by_position_absolute()
-        print("✅ Follow rate by absolute position (separate subplots)")
+        print(" Follow rate by absolute position (separate subplots)")
         
         self.plot_follow_rate_heatmap_absolute()
-        print("✅ Follow rate heatmap (absolute positions)")
-        
-        self.plot_follow_rate_comparison_clean()
-        print("✅ Follow rate comparison (clean, sampled)")
-        
-        self.plot_follow_rate_by_pattern_and_position()
-        print("✅ Follow rate by position & pattern (percentile + heatmap)")
-        
+        print(" Follow rate heatmap (absolute positions)")
+                        
         self.plot_pattern_performance_overview()
-        print("✅ Pattern performance overview")
+        print(" Pattern performance overview")
         
         self.plot_rule_position_vs_text_position()
-        print("✅ Rule position vs text position")
+        print(" Rule position vs text position")
         
-        self.plot_follow_rate_by_component_type()
-        print("✅ Follow rate by component type")
+        # Add model comparison if multiple models
+        if 'model' in self.df.columns and len(self.df['model'].unique()) > 1:
+            self.plot_model_comparison_comprehensive()
+            print(" Comprehensive model comparison")
         
-        self.plot_primacy_recency_bias()
-        print("✅ Primacy & recency bias")
-        
-        print(f"📊 All visualizations saved to {self.output_dir}")
+        print(f" All visualizations saved to {self.output_dir}")
