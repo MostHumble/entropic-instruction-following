@@ -1,77 +1,373 @@
 import pandas as pd
-from pathlib import Path
-from typing import List
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
+from pathlib import Path
+from typing import Dict
 
 class MultiModelComparison:
     """Compare results across multiple models"""
     
-    def __init__(self, results_dir: str = "data/results"):
+    def __init__(self, results_dir: str):
         self.results_dir = Path(results_dir)
         self.all_results = self._load_all_results()
+        
+        if len(self.all_results) == 0:
+            raise FileNotFoundError(f"No results CSV files found in {results_dir}")
+        
+        self._expand_word_details()
+        self._setup_color_scheme()
     
     def _load_all_results(self) -> pd.DataFrame:
-        """Load and combine all results CSV files"""
-        results_files = list(self.results_dir.glob("results_*.csv"))
+        """Load all results CSV files and combine them"""
+        csv_files = list(self.results_dir.glob("results_*.csv"))
         
-        if not results_files:
-            raise FileNotFoundError(f"No results CSV files found in {self.results_dir}")
+        if not csv_files:
+            raise FileNotFoundError(f"No results_*.csv files found in {self.results_dir}")
         
         dfs = []
-        for rf in sorted(results_files):
-            df = pd.read_csv(rf)
+        for csv_file in csv_files:
+            df = pd.read_csv(csv_file)
+            
+            # Extract model name from filename if not in CSV
+            if 'model' not in df.columns:
+                # Filename format: results_TIMESTAMP_MODELNAME.csv
+                parts = csv_file.stem.split('_')
+                if len(parts) >= 3:
+                    model_name = '_'.join(parts[2:])
+                    df['model'] = model_name
+                else:
+                    df['model'] = 'unknown'
+            
             dfs.append(df)
         
-        combined_df = pd.concat(dfs, ignore_index=True)
-        return combined_df
+        combined = pd.concat(dfs, ignore_index=True)
+        print(f"📊 Loaded {len(csv_files)} result files, {len(combined)} total samples")
+        print(f"   Models: {sorted(combined['model'].unique())}")
+        
+        return combined
     
-    def plot_model_comparison(self):
-        """Plot average score by model"""
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    def _expand_word_details(self):
+        """Expand word_details JSON for detailed analysis"""
+        import json
         
-        # Overall scores
-        model_scores = self.all_results.groupby('model')['score'].agg(['mean', 'std']).reset_index()
-        model_scores = model_scores.sort_values('mean', ascending=False)
+        expanded_rows = []
         
-        axes[0].bar(range(len(model_scores)), model_scores['mean'], yerr=model_scores['std'], 
-                    color='steelblue', alpha=0.7, capsize=5)
-        axes[0].set_xticks(range(len(model_scores)))
-        axes[0].set_xticklabels(model_scores['model'], rotation=45, ha='right')
-        axes[0].set_ylabel("Mean Score")
-        axes[0].set_title("Model Performance Comparison")
-        axes[0].set_ylim(0, 1)
-        axes[0].grid(axis='y', alpha=0.3)
+        for _, row in self.all_results.iterrows():
+            trial_id = int(row['id'].split('_')[-2])
+            config_id = '_'.join(row['id'].split('_')[:-2])
+            
+            word_details = json.loads(row['word_details'])
+            for wd in word_details:
+                expanded_rows.append({
+                    'model': row['model'],
+                    'pattern': row['pattern'],
+                    'count': row['count'],
+                    'score': row['score'],
+                    'position_in_rule': wd['position'],
+                    'word': wd['word'],
+                    'found': wd['found'],
+                    'positions_in_text': wd['positions_in_text'],
+                    'occurrences': wd['occurrences'],
+                    'sample_id': row['id'],
+                    'trial_id': trial_id,
+                    'config_id': config_id
+                })
         
-        # Scores by pattern
-        for model in self.all_results['model'].unique():
-            model_data = self.all_results[self.all_results['model'] == model]
-            pattern_scores = model_data.groupby('pattern')['score'].mean()
-            axes[1].plot(pattern_scores.index, pattern_scores.values, marker='o', label=model)
+        self.expanded_df = pd.DataFrame(expanded_rows)
+    
+    def _setup_color_scheme(self):
+        """Setup colors for models"""
+        models = sorted(self.all_results['model'].unique())
         
-        axes[1].set_xlabel("Pattern")
-        axes[1].set_ylabel("Mean Score")
-        axes[1].set_title("Performance by Pattern")
-        axes[1].legend()
-        axes[1].grid(True, alpha=0.3)
-        axes[1].set_ylim(0, 1)
+        if len(models) <= 10:
+            colors = plt.cm.tab10(np.linspace(0, 1, 10))
+        elif len(models) <= 20:
+            colors = plt.cm.tab20(np.linspace(0, 1, 20))
+        else:
+            colors = plt.cm.hsv(np.linspace(0, 0.9, len(models)))
         
-        plt.tight_layout()
-        plt.savefig(self.results_dir / "model_comparison.png", dpi=300)
+        self.model_colors = {model: colors[i] for i, model in enumerate(models)}
+    
+    def plot_model_comparison_comprehensive(self):
+        """Comprehensive model comparison across multiple dimensions"""
+        models = sorted(self.all_results['model'].unique())
+        
+        if len(models) <= 1:
+            print("⚠️  Only one model found, skipping comparison")
+            return
+        
+        fig = plt.figure(figsize=(20, 12))
+        gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+        
+        # 1. Overall performance by pattern (grouped bar)
+        ax1 = fig.add_subplot(gs[0, :2])
+        self._plot_model_pattern_comparison(ax1)
+        
+        # 2. Performance by rule length (line plot)
+        ax2 = fig.add_subplot(gs[0, 2])
+        self._plot_model_by_rule_length(ax2)
+        
+        # 3. Position-based follow rate (line plot)
+        ax3 = fig.add_subplot(gs[1, :])
+        self._plot_model_position_comparison(ax3)
+        
+        # 4. Primacy/Recency effect comparison (bar)
+        ax4 = fig.add_subplot(gs[2, 0])
+        self._plot_model_primacy_recency(ax4)
+        
+        # 5. Coherent vs Random performance (bar)
+        ax5 = fig.add_subplot(gs[2, 1])
+        self._plot_model_coherent_vs_random(ax5)
+        
+        # 6. Summary statistics table
+        ax6 = fig.add_subplot(gs[2, 2])
+        self._plot_model_summary_table(ax6)
+        
+        plt.suptitle("Model Comparison: Comprehensive Analysis", 
+                    fontsize=18, fontweight='bold', y=0.995)
+        plt.savefig(self.results_dir / "model_comparison_comprehensive.png", 
+                   dpi=300, bbox_inches='tight')
         plt.close()
+        print("✅ Comprehensive model comparison saved")
+    
+    def _plot_model_pattern_comparison(self, ax):
+        """Compare models across patterns"""
+        models = sorted(self.all_results['model'].unique())
+        patterns = sorted(self.expanded_df['pattern'].unique())
+        
+        model_pattern_scores = self.expanded_df.groupby(['model', 'pattern'])['found'].agg(
+            mean=('found', 'mean'),
+            sem=('found', 'sem')
+        ).reset_index()
+        
+        x = np.arange(len(patterns))
+        width = 0.8 / len(models)
+        
+        for idx, model in enumerate(models):
+            model_data = model_pattern_scores[model_pattern_scores['model'] == model]
+            model_data = model_data.set_index('pattern').reindex(patterns).reset_index()
+            
+            offset = (idx - len(models)/2 + 0.5) * width
+            color = self.model_colors[model]
+            
+            ax.bar(x + offset, model_data['mean'], width,
+                   label=model, alpha=0.8,
+                   yerr=1.96 * model_data['sem'], capsize=3,
+                   color=color)
+        
+        ax.set_xlabel("Pattern Type", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Performance by Pattern (with 95% CI)", fontsize=12, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(patterns, rotation=45, ha='right')
+        ax.legend(title="Model", loc='best', fontsize=9)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+    
+    def _plot_model_by_rule_length(self, ax):
+        """Compare models across rule lengths"""
+        model_count_scores = self.expanded_df.groupby(['model', 'count'])['found'].agg(
+            mean=('found', 'mean'),
+            sem=('found', 'sem')
+        ).reset_index()
+        
+        models = sorted(model_count_scores['model'].unique())
+        
+        for model in models:
+            model_data = model_count_scores[model_count_scores['model'] == model].sort_values('count')
+            color = self.model_colors[model]
+            
+            ax.plot(model_data['count'], model_data['mean'], 
+                   marker='o', linewidth=2, markersize=8,
+                   label=model, color=color, alpha=0.8)
+            ax.fill_between(
+                model_data['count'],
+                model_data['mean'] - 1.96 * model_data['sem'],
+                model_data['mean'] + 1.96 * model_data['sem'],
+                alpha=0.2, color=color
+            )
+        
+        ax.set_xlabel("Rule Length (words)", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Scaling with Rule Length", fontsize=12, fontweight='bold')
+        ax.legend(title="Model", fontsize=8)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(True, alpha=0.3)
+    
+    def _plot_model_position_comparison(self, ax):
+        """Compare models' follow rate across positions (normalized)"""
+        models = sorted(self.expanded_df['model'].unique())
+        
+        for model in models:
+            model_data = self.expanded_df[self.expanded_df['model'] == model].copy()
+            
+            # Normalize positions to 0-100%
+            max_pos = model_data['position_in_rule'].max()
+            model_data['position_pct'] = (model_data['position_in_rule'] / max_pos * 100).astype(int)
+            
+            position_stats = model_data.groupby(['position_pct', 'trial_id'])['found'].mean().reset_index()
+            position_agg = position_stats.groupby('position_pct').agg(
+                mean=('found', 'mean'),
+                sem=('found', 'sem')
+            ).reset_index()
+            
+            # Sample every 5th point for clarity
+            step = max(1, len(position_agg) // 20)
+            plot_data = position_agg.iloc[::step]
+            
+            color = self.model_colors[model]
+            ax.plot(plot_data['position_pct'], plot_data['mean'], 
+                   marker='o', linewidth=2, markersize=4,
+                   label=model, color=color, alpha=0.8)
+        
+        ax.set_xlabel("Position in Rule (%)", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Position-Based Follow Rate (Normalized)", fontsize=12, fontweight='bold')
+        ax.legend(title="Model", loc='best', fontsize=9)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(True, alpha=0.3)
+    
+    def _plot_model_primacy_recency(self, ax):
+        """Compare primacy/recency effects across models"""
+        # Create quintiles
+        self.expanded_df['position_quintile'] = pd.qcut(
+            self.expanded_df['position_in_rule'], 
+            q=5, 
+            duplicates='drop', 
+            labels=['1st', '2nd', '3rd', '4th', '5th']
+        )
+        
+        model_quintile = self.expanded_df.groupby(['model', 'position_quintile'], observed=True)['found'].mean().unstack()
+        
+        model_quintile.plot(kind='bar', ax=ax, alpha=0.8, width=0.8)
+        ax.set_xlabel("Model", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Primacy/Recency Effect", fontsize=12, fontweight='bold')
+        ax.set_ylim(0, 1.0)
+        ax.legend(title='Position', fontsize=8, ncol=2)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+    
+    def _plot_model_coherent_vs_random(self, ax):
+        """Compare coherent vs random performance"""
+        def classify_pattern(pattern):
+            if pattern == 'c' or (pattern.startswith('c') and 'r' not in pattern):
+                return 'Coherent'
+            elif pattern == 'r' or (pattern.startswith('r') and 'c' not in pattern):
+                return 'Random'
+            else:
+                return 'Mixed'
+        
+        self.expanded_df['pattern_type'] = self.expanded_df['pattern'].apply(classify_pattern)
+        
+        model_type_scores = self.expanded_df.groupby(['model', 'pattern_type'])['found'].agg(
+            mean=('found', 'mean'),
+            sem=('found', 'sem')
+        ).reset_index()
+        
+        models = sorted(model_type_scores['model'].unique())
+        pattern_types = ['Coherent', 'Random', 'Mixed']
+        
+        x = np.arange(len(models))
+        width = 0.25
+        
+        colors = {'Coherent': '#2ca02c', 'Random': '#d62728', 'Mixed': '#ff7f0e'}
+        
+        for idx, ptype in enumerate(pattern_types):
+            type_data = model_type_scores[model_type_scores['pattern_type'] == ptype]
+            type_data = type_data.set_index('model').reindex(models).reset_index()
+            
+            offset = (idx - 1) * width
+            ax.bar(x + offset, type_data['mean'], width,
+                   label=ptype, alpha=0.8,
+                   yerr=1.96 * type_data['sem'], capsize=3,
+                   color=colors.get(ptype, 'gray'))
+        
+        ax.set_xlabel("Model", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Coherent vs Random", fontsize=12, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(models, rotation=45, ha='right')
+        ax.legend(title="Pattern Type", fontsize=8)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+    
+    def _plot_model_summary_table(self, ax):
+        """Summary statistics table"""
+        ax.axis('off')
+        
+        summary_stats = []
+        for model in sorted(self.all_results['model'].unique()):
+            model_expanded = self.expanded_df[self.expanded_df['model'] == model]
+            
+            overall_mean = model_expanded['found'].mean()
+            
+            # Best pattern
+            pattern_means = model_expanded.groupby('pattern')['found'].mean()
+            best_pattern = pattern_means.idxmax()
+            best_score = pattern_means.max()
+            
+            # Worst pattern
+            worst_pattern = pattern_means.idxmin()
+            worst_score = pattern_means.min()
+            
+            summary_stats.append([
+                model[:20],  # Short name
+                f'{overall_mean:.1%}',
+                f'{best_pattern}\n({best_score:.1%})',
+                f'{worst_pattern}\n({worst_score:.1%})'
+            ])
+        
+        table = ax.table(
+            cellText=summary_stats,
+            colLabels=['Model', 'Overall', 'Best Pattern', 'Worst Pattern'],
+            cellLoc='center',
+            loc='center',
+            bbox=[0, 0, 1, 1]
+        )
+        
+        table.auto_set_font_size(False)
+        table.set_fontsize(9)
+        table.scale(1, 2)
+        
+        # Style header
+        for i in range(4):
+            table[(0, i)].set_facecolor('#4CAF50')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+        
+        # Alternate row colors
+        for i in range(1, len(summary_stats) + 1):
+            for j in range(4):
+                if i % 2 == 0:
+                    table[(i, j)].set_facecolor('#f0f0f0')
+        
+        ax.set_title("Summary Statistics", fontsize=12, fontweight='bold', pad=20)
     
     def get_summary(self) -> str:
-        """Get text summary of model comparison"""
-        summary = "\n" + "="*70 + "\nMODEL COMPARISON\n" + "="*70 + "\n"
+        """Generate text summary of model comparison"""
+        summary = ["=" * 60, "MODEL COMPARISON SUMMARY", "=" * 60, ""]
         
         for model in sorted(self.all_results['model'].unique()):
             model_data = self.all_results[self.all_results['model'] == model]
+            model_expanded = self.expanded_df[self.expanded_df['model'] == model]
+            
             mean_score = model_data['score'].mean()
             std_score = model_data['score'].std()
             n_samples = len(model_data)
             
-            summary += f"\n{model}:\n"
-            summary += f"  Mean score: {mean_score:.2%} (±{std_score:.4f})\n"
-            summary += f"  Samples: {n_samples}\n"
+            summary.append(f"{model}:")
+            summary.append(f"  Mean score: {mean_score:.2%} (±{std_score:.4f})")
+            summary.append(f"  Samples: {n_samples}")
+            summary.append("")
         
-        return summary
+        return "\n".join(summary)
+    
+    def plot_model_comparison(self):
+        """Legacy method name - calls comprehensive comparison"""
+        self.plot_model_comparison_comprehensive()
