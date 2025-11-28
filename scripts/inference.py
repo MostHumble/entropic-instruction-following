@@ -2,9 +2,12 @@ import hydra
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import List
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import torch
 import pandas as pd
@@ -43,8 +46,14 @@ def load_model_config(model_name: str, base_cfg: DictConfig) -> DictConfig:
     with open(model_cfg_path) as f:
         model_cfg = OmegaConf.load(f)
     
-    # Merge model config into base config
-    cfg = OmegaConf.merge(base_cfg, model_cfg)
+    # Create a mutable copy of base config
+    cfg = OmegaConf.to_container(base_cfg, resolve=True)
+    cfg = OmegaConf.create(cfg)
+    OmegaConf.set_struct(cfg, False)
+    
+    # Merge model config
+    cfg = OmegaConf.merge(cfg, model_cfg)
+    
     return cfg
 
 
@@ -63,7 +72,8 @@ def run_inference_for_model(
     
     # Load model-specific config
     model_cfg = load_model_config(model_name, cfg)
-    
+
+    logger.info(model_cfg)
     logger.info(f"Model: {model_cfg.model.name}")
     logger.info(f"Max model len: {model_cfg.inference.max_model_len}")
     logger.info(f"Temperature: {model_cfg.inference.sampling.temperature}")
@@ -121,7 +131,7 @@ def run_inference_for_model(
             "type": case['type'],
             "pattern": case.get('pattern', 'unknown'),
             "count": case['count'],
-            "strategy": strategy.name,
+            "strategy": cfg.strategy.name,
             "model": model_name,
             "model_name_full": model_cfg.model.name,
             "score": stats['score'],
@@ -138,14 +148,14 @@ def run_inference_for_model(
     df = pd.DataFrame(results)
     results_dir.mkdir(parents=True, exist_ok=True)
     
-    results_path = results_dir / f"results_{strategy.name}_{model_name}.csv"
+    results_path = results_dir / f"results_{cfg.strategy.name}_{model_name}.csv"
     df.to_csv(results_path, index=False)
     logger.info(f"Saved {len(results)} results to {results_path}")
     
     return str(results_path)
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg: DictConfig):
     """Run inference on multiple models"""
     
