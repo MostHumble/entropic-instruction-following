@@ -1,0 +1,27 @@
+============================================================
+MODEL COMPARISON SUMMARY
+============================================================
+
+falcon:
+  Mean score: 46.71% (±0.3473)
+  Samples: 36
+
+llama:
+  Mean score: 2.68% (±0.0616)
+  Samples: 36
+
+mistral:
+  Mean score: 30.97% (±0.2620)
+  Samples: 36
+
+olmo:
+  Mean score: 70.85% (±0.2764)
+  Samples: 36
+
+qwen2.5-0.5:
+  Mean score: 12.27% (±0.2399)
+  Samples: 60
+
+smol2-360:
+  Mean score: 8.16% (±0.2072)
+  Samples: 60

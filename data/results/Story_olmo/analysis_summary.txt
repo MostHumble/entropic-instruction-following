@@ -1,0 +1,87 @@
+
+EXPERIMENT RESULTS SUMMARY (Research-Grade Analysis)
+======================================================================
+
+Overall Statistics:
+  - Total samples: 36
+  - Unique configurations: 12
+  - Trials per configuration: 3.0 (avg)
+  - Total words analyzed: 4500
+  - Overall follow rate: 55.02% ± 0.0074
+  - Mean score: 70.85% ± 0.0461
+
+By Pattern (with 95% Confidence Intervals):
+
+  c               (n=50 words, trials=3):
+    Score: 97.33% [95% CI: 92.11% - 102.56%]
+    Std Dev: 0.0462
+  c               (n=200 words, trials=3):
+    Score: 56.00% [95% CI: 56.00% - 56.00%]
+    Std Dev: 0.0000
+  cr              (n=50 words, trials=3):
+    Score: 96.00% [95% CI: 88.16% - 103.84%]
+    Std Dev: 0.0693
+  cr              (n=200 words, trials=3):
+    Score: 39.33% [95% CI: 36.98% - 41.69%]
+    Std Dev: 0.0208
+  c|r             (n=50 words, trials=3):
+    Score: 98.67% [95% CI: 96.05% - 101.28%]
+    Std Dev: 0.0231
+  c|r             (n=200 words, trials=3):
+    Score: 41.33% [95% CI: 35.55% - 47.11%]
+    Std Dev: 0.0511
+  c|r|c           (n=50 words, trials=3):
+    Score: 100.00% [95% CI: 100.00% - 100.00%]
+    Std Dev: 0.0000
+  c|r|c           (n=200 words, trials=3):
+    Score: 50.67% [95% CI: 36.34% - 65.00%]
+    Std Dev: 0.1266
+  r               (n=50 words, trials=3):
+    Score: 94.00% [95% CI: 82.24% - 105.76%]
+    Std Dev: 0.1039
+  r               (n=200 words, trials=3):
+    Score: 42.17% [95% CI: 40.86% - 43.47%]
+    Std Dev: 0.0115
+  r|c|r           (n=50 words, trials=3):
+    Score: 97.33% [95% CI: 92.11% - 102.56%]
+    Std Dev: 0.0462
+  r|c|r           (n=200 words, trials=3):
+    Score: 37.33% [95% CI: 31.90% - 42.77%]
+    Std Dev: 0.0480
+
+======================================================================
+Statistical Tests:
+======================================================================
+
+One-way ANOVA (pattern effect):
+  F-statistic: 0.1164
+  p-value: 9.8779e-01
+  Interpretation: No significant effect of pattern type
+
+Coherent vs Random (t-test):
+  t-statistic: 0.5679
+  p-value: 5.8265e-01
+  Cohen's d: 0.3591 (small effect)
+  Coherent mean: 76.67% ± 0.0932
+  Random mean: 68.08% ± 0.1190
+
+======================================================================
+Reliability Analysis:
+======================================================================
+
+Pattern 'c':
+  ICC(2,1): 0.9876 (excellent reliability)
+Pattern 'r':
+  ICC(2,1): 0.9646 (excellent reliability)
+Pattern 'cr':
+  ICC(2,1): 0.9814 (excellent reliability)
+Pattern 'c|r':
+  ICC(2,1): 0.9861 (excellent reliability)
+Pattern 'c|r|c':
+  ICC(2,1): 0.9369 (excellent reliability)
+Pattern 'r|c|r':
+  ICC(2,1): 0.9973 (excellent reliability)
+
+======================================================================
+Significance levels: * p<0.05, ** p<0.01, *** p<0.001
+======================================================================
