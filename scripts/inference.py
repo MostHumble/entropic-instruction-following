@@ -98,7 +98,7 @@ def run_inference_for_model(
     ]
 
     # Load strategy
-    strategy = get_strategy(cfg.strategy.name, model_name=model_name)
+    strategy = get_strategy(cfg.strategy.name, model_name=model_cfg.model.name)
     logger.info(f"Strategy: {cfg.strategy.name}")
     
     logger.info(f"Testing rule counts: {rule_counts_to_test}")
