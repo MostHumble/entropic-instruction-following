@@ -63,7 +63,6 @@ def run_inference_for_model(
     model_name: str,
     cfg: DictConfig,
     dataset: List[dict],
-    strategy,
     results_dir: Path
 ) -> str:
     """Run inference for a single model and return results path"""
@@ -97,6 +96,10 @@ def run_inference_for_model(
         if case['count'] in rule_counts_to_test
         and case.get('pattern') in patterns_to_test
     ]
+
+    # Load strategy
+    strategy = get_strategy(cfg.strategy.name, model_name=model_name)
+    logger.info(f"Strategy: {cfg.strategy.name}")
     
     logger.info(f"Testing rule counts: {rule_counts_to_test}")
     logger.info(f"Testing patterns: {patterns_to_test}")
@@ -183,10 +186,6 @@ def main(cfg: DictConfig):
     logger.info(f"Available models: {available_models}")
     logger.info(f"Testing models: {models_to_test}")
     
-    # Load strategy
-    strategy = get_strategy(cfg.strategy.name)
-    logger.info(f"Strategy: {cfg.strategy.name}")
-    
     # Load dataset once
     dataset = load_dataset(cfg.word_data_generator.dataset_path)
     logger.info(f"Loaded {len(dataset)} samples")
@@ -202,7 +201,6 @@ def main(cfg: DictConfig):
                 model_name,
                 cfg,
                 dataset,
-                strategy,
                 results_dir
             )
             results_files.append(results_file)
