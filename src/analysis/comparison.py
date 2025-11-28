@@ -223,6 +223,28 @@ class MultiModelComparison:
         ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         ax.grid(True, alpha=0.3)
 
+    def _plot_model_primacy_recency(self, ax):
+        """Compare primacy/recency effects across models"""
+        # Create quintiles
+        self.expanded_df['position_quintile'] = pd.qcut(
+            self.expanded_df['position_in_rule'], 
+            q=5, 
+            duplicates='drop', 
+            labels=['1st', '2nd', '3rd', '4th', '5th']
+        )
+        
+        model_quintile = self.expanded_df.groupby(['model', 'position_quintile'], observed=True)['found'].mean().unstack()
+        
+        model_quintile.plot(kind='bar', ax=ax, alpha=0.8, width=0.8)
+        ax.set_xlabel("Model", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Primacy/Recency Effect", fontsize=12, fontweight='bold')
+        ax.set_ylim(0, 1.0)
+        ax.legend(title='Position', fontsize=8, ncol=2)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+
     def _plot_model_coherent_vs_random(self, ax):
         def classify_pattern(pattern):
             if pattern == 'c' or (pattern.startswith('c') and 'r' not in pattern):
