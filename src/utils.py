@@ -6,15 +6,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_strategy(strategy_name: str):
-    """Factory to pick strategy based on config string."""
+def get_strategy(strategy_name: str, model_name: str):
+    """Load strategy with model-specific chat template."""
     strategies = {
-        "Standard_Story": StandardStoryStrategy(),
-        "Indexed_List": IndexedListStrategy(),
+        "Standard_Story": StandardStoryStrategy,
+        "Indexed_List": IndexedListStrategy,
     }
+
     if strategy_name not in strategies:
         raise ValueError(f"Unknown strategy: {strategy_name}. Available: {list(strategies.keys())}")
-    return strategies[strategy_name]
+
+    strategy_class = strategies[strategy_name]
+    return strategy_class(model_name=model_name)
 
 
 def load_dataset(dataset_path: str) -> list:
