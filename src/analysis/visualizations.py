@@ -41,8 +41,157 @@ class ResultsVisualizer:
         
         self.expanded_df = pd.DataFrame(expanded_rows)
     
+    def plot_follow_rate_by_position_absolute(self):
+        """Separate subplots for each pattern - NO overlapping!"""
+        patterns = sorted(self.expanded_df['pattern'].unique())
+        n_patterns = len(patterns)
+        
+        # Create subplots in a grid
+        n_cols = 3
+        n_rows = (n_patterns + n_cols - 1) // n_cols
+        
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 4*n_rows), sharex=True, sharey=True)
+        axes = axes.flatten() if n_patterns > 1 else [axes]
+        
+        max_position = self.expanded_df['position_in_rule'].max()
+        
+        for idx, pattern in enumerate(patterns):
+            ax = axes[idx]
+            pattern_data = self.expanded_df[self.expanded_df['pattern'] == pattern]
+            
+            # Aggregate across trials, keep absolute position
+            position_stats = pattern_data.groupby(['position_in_rule', 'trial_id'])['found'].mean().reset_index()
+            position_agg = position_stats.groupby('position_in_rule').agg({
+                'found': ['mean', 'sem', 'count']
+            }).reset_index()
+            
+            position_agg.columns = ['position', 'mean', 'sem', 'count']
+            
+            # Plot with 95% CI
+            ax.plot(position_agg['position'], position_agg['mean'], 
+                   marker='o', linewidth=2, markersize=3, color='steelblue')
+            
+            ax.fill_between(
+                position_agg['position'],
+                position_agg['mean'] - 1.96 * position_agg['sem'],
+                position_agg['mean'] + 1.96 * position_agg['sem'],
+                alpha=0.3, color='steelblue'
+            )
+            
+            ax.set_title(f"Pattern: {pattern} (n={int(position_agg['count'].iloc[0])} trials)", 
+                        fontsize=12, fontweight='bold')
+            ax.set_xlabel("Absolute Position in Rule", fontsize=10)
+            ax.set_ylabel("Follow Rate", fontsize=10)
+            ax.grid(True, alpha=0.3, linestyle='--')
+            ax.set_ylim(-0.05, 1.05)
+            ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+            
+            # Add mean line
+            overall_mean = position_agg['mean'].mean()
+            ax.axhline(y=overall_mean, color='red', linestyle='-', linewidth=1.5, alpha=0.7,
+                      label=f'Mean: {overall_mean:.2%}')
+            ax.legend(fontsize=9)
+        
+        # Hide unused subplots
+        for idx in range(n_patterns, len(axes)):
+            axes[idx].axis('off')
+        
+        plt.suptitle(f"Follow Rate by Absolute Position (Rule Length: {max_position+1} words)", 
+                    fontsize=16, fontweight='bold', y=1.00)
+        plt.tight_layout()
+        plt.savefig(self.output_dir / "01a_follow_rate_by_absolute_position.png", 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def plot_follow_rate_heatmap_absolute(self):
+        """Heatmap with absolute positions (no binning)"""
+        fig, ax = plt.subplots(figsize=(16, 6))
+        
+        # Aggregate by trial, then average
+        trial_agg = self.expanded_df.groupby(['pattern', 'position_in_rule', 'trial_id'])['found'].mean().reset_index()
+        final_agg = trial_agg.groupby(['pattern', 'position_in_rule'])['found'].mean().reset_index()
+        
+        # Pivot for heatmap
+        heatmap_data = final_agg.pivot(index='pattern', columns='position_in_rule', values='found')
+        
+        sns.heatmap(
+            heatmap_data, 
+            cmap='RdYlGn', 
+            cbar_kws={'label': 'Follow Rate (averaged across trials)'},
+            ax=ax,
+            vmin=0,
+            vmax=1,
+            linewidths=0.5,
+            linecolor='white',
+            annot=False,
+            xticklabels=10  # Show every 10th position to avoid clutter
+        )
+        
+        ax.set_xlabel("Absolute Position in Rule", fontsize=12)
+        ax.set_ylabel("Pattern Type", fontsize=12)
+        ax.set_title("Follow Rate Heatmap (Absolute Positions, Aggregated Across Trials)", 
+                    fontsize=14, fontweight='bold')
+        
+        plt.tight_layout()
+        plt.savefig(self.output_dir / "01b_follow_rate_heatmap_absolute.png", 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def plot_follow_rate_comparison_clean(self):
+        """Clean comparison: One line per pattern, different colors, clear legend"""
+        fig, ax = plt.subplots(figsize=(14, 7))
+        
+        patterns = sorted(self.expanded_df['pattern'].unique())
+        
+        # Color scheme: coherent=green, random=red, mixed=orange/purple
+        color_map = {
+            'c': '#2ca02c',      # Green
+            'r': '#d62728',      # Red
+            'cr': '#ff7f0e',     # Orange
+            'c|r': '#9467bd',    # Purple
+            'r|c|r': '#8c564b',  # Brown
+            'c|r|c': '#e377c2',  # Pink
+            'c|r|c|r': '#7f7f7f' # Gray
+        }
+        
+        for pattern in patterns:
+            pattern_data = self.expanded_df[self.expanded_df['pattern'] == pattern]
+            
+            # Aggregate across trials
+            position_stats = pattern_data.groupby(['position_in_rule', 'trial_id'])['found'].mean().reset_index()
+            position_agg = position_stats.groupby('position_in_rule').agg({
+                'found': ['mean', 'sem', 'count']
+            }).reset_index()
+            
+            position_agg.columns = ['position', 'mean', 'sem', 'count']
+            
+            # Use every 5th point to reduce clutter
+            step = max(1, len(position_agg) // 40)
+            plot_data = position_agg.iloc[::step]
+            
+            color = color_map.get(pattern, '#1f77b4')
+            n_trials = int(position_agg['count'].iloc[0])
+            
+            ax.plot(plot_data['position'], plot_data['mean'], 
+                   marker='o', linewidth=2, markersize=4, 
+                   color=color, alpha=0.8,
+                   label=f"{pattern} (n={n_trials})")
+        
+        ax.set_xlabel("Absolute Position in Rule", fontsize=12)
+        ax.set_ylabel("Follow Rate", fontsize=12)
+        ax.set_title("Follow Rate Comparison Across Patterns", fontsize=14, fontweight='bold')
+        ax.legend(title="Pattern", loc='best', fontsize=10, framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_ylim(-0.05, 1.05)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        
+        plt.tight_layout()
+        plt.savefig(self.output_dir / "01c_follow_rate_comparison_clean.png", 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+    
     def plot_follow_rate_by_pattern_and_position(self):
-        """Line plot with confidence intervals from trials"""
+        """Combined view with percentiles (original functionality)"""
         fig, axes = plt.subplots(2, 1, figsize=(14, 10))
         
         max_position = self.expanded_df['position_in_rule'].max()
@@ -56,37 +205,39 @@ class ResultsVisualizer:
             # Aggregate across trials first, then positions
             position_stats = pattern_data.groupby(['position_in_rule', 'trial_id'])['found'].mean().reset_index()
             position_agg = position_stats.groupby('position_in_rule').agg({
-                'found': ['mean', 'sem', 'count']  # Standard error across trials
+                'found': ['mean', 'sem', 'count']
             }).reset_index()
             
             position_agg.columns = ['position_in_rule', 'mean', 'sem', 'count']
             position_agg['position_pct'] = (position_agg['position_in_rule'] / max_position) * 100
             
-            # Plot with 95% CI
-            ax1.plot(position_agg['position_pct'], position_agg['mean'], 
-                    marker='o', label=f"{pattern} (n={position_agg['count'].iloc[0]:.0f} trials)", 
+            # Sample points to reduce clutter
+            step = max(1, len(position_agg) // 40)
+            plot_data = position_agg.iloc[::step]
+            
+            ax1.plot(plot_data['position_pct'], plot_data['mean'], 
+                    marker='o', label=f"{pattern} (n={int(plot_data['count'].iloc[0])} trials)", 
                     linewidth=2, markersize=4, alpha=0.8)
             
             ax1.fill_between(
-                position_agg['position_pct'],
-                position_agg['mean'] - 1.96 * position_agg['sem'],
-                position_agg['mean'] + 1.96 * position_agg['sem'],
-                alpha=0.2, label=f'{pattern} 95% CI'
+                plot_data['position_pct'],
+                plot_data['mean'] - 1.96 * plot_data['sem'],
+                plot_data['mean'] + 1.96 * plot_data['sem'],
+                alpha=0.2
             )
         
         ax1.set_xlabel("Position in Rule (%)", fontsize=12)
         ax1.set_ylabel("Follow Rate", fontsize=12)
         ax1.set_title(f"Follow Rate by Pattern (Rule Length: {rule_length} words, with 95% CI)", 
                      fontsize=14, fontweight='bold')
-        ax1.legend(title="Pattern", loc='best', fontsize=9)
+        ax1.legend(title="Pattern", loc='best', fontsize=9, ncol=2)
         ax1.grid(True, alpha=0.3, linestyle='--')
         ax1.set_ylim(-0.05, 1.05)
         ax1.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         
-        # Heatmap (aggregated across trials)
+        # Heatmap (binned into deciles)
         ax2 = axes[1]
         
-        # Aggregate by trial, then average
         trial_agg = self.expanded_df.groupby(['pattern', 'position_in_rule', 'trial_id'])['found'].mean().reset_index()
         final_agg = trial_agg.groupby(['pattern', 'position_in_rule'])['found'].mean().reset_index()
         
@@ -101,7 +252,7 @@ class ResultsVisualizer:
         sns.heatmap(
             heatmap_data, 
             cmap='RdYlGn', 
-            cbar_kws={'label': 'Follow Rate (averaged across trials)'},
+            cbar_kws={'label': 'Follow Rate'},
             ax=ax2,
             vmin=0,
             vmax=1,
@@ -337,8 +488,20 @@ class ResultsVisualizer:
     def create_all(self):
         """Generate all visualizations"""
         print("Generating visualizations...")
+        
+        # New plots (absolute positions, no overlap)
+        self.plot_follow_rate_by_position_absolute()
+        print("✅ Follow rate by absolute position (separate subplots)")
+        
+        self.plot_follow_rate_heatmap_absolute()
+        print("✅ Follow rate heatmap (absolute positions)")
+        
+        self.plot_follow_rate_comparison_clean()
+        print("✅ Follow rate comparison (clean, sampled)")
+        
+        # Original plots
         self.plot_follow_rate_by_pattern_and_position()
-        print("✅ Follow rate by position & pattern (line + heatmap)")
+        print("✅ Follow rate by position & pattern (percentile + heatmap)")
         self.plot_pattern_performance_overview()
         print("✅ Pattern performance overview")
         self.plot_rule_position_vs_text_position()
