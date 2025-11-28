@@ -271,18 +271,19 @@ class ResultsVisualizer:
             pattern_data = self.expanded_df[self.expanded_df['pattern'] == pattern]
             
             position_stats = pattern_data.groupby(['position_in_rule', 'trial_id'])['found'].mean().reset_index()
-            position_agg = position_stats.groupby('position_in_rule').agg({
-                'found': ['mean', 'sem', 'count']
-            }).reset_index()
+            position_agg = position_stats.groupby('position_in_rule').agg(
+                mean='mean',
+                sem='sem',
+                n='count'
+            ).reset_index()
             
-            position_agg.columns = ['position_in_rule', 'mean', 'sem', 'count']
             position_agg['position_pct'] = (position_agg['position_in_rule'] / max_position) * 100
             
             step = max(1, len(position_agg) // 40)
             plot_data = position_agg.iloc[::step]
             
             color = self.color_map.get(pattern, '#1f77b4')
-            n_trials = int(plot_data['count'].iloc[0])
+            n_trials = int(plot_data['n'].iloc[0])
             
             ax1.plot(plot_data['position_pct'], plot_data['mean'], 
                     marker='o', label=f"{pattern} (n={n_trials} trials)", 
@@ -316,7 +317,7 @@ class ResultsVisualizer:
             duplicates='drop'
         )
         
-        heatmap_data = final_agg.groupby(['pattern', 'position_bin'])['found'].mean().unstack()
+        heatmap_data = final_agg.groupby(['pattern', 'position_bin'], observed=True)['found'].mean().unstack() 
         
         sns.heatmap(
             heatmap_data, 
@@ -343,7 +344,9 @@ class ResultsVisualizer:
         fig, ax = plt.subplots(figsize=(14, 6))
         
         pattern_count_scores = self.expanded_df.groupby(['pattern', 'count'])['found'].agg(
-            ['mean', 'std', 'count']
+            mean='mean',      # Use named aggregations
+            std='std',
+            n='count'        
         ).reset_index()
         
         patterns = sorted(pattern_count_scores['pattern'].unique())
@@ -404,7 +407,10 @@ class ResultsVisualizer:
         fig, ax = plt.subplots(figsize=(10, 6))
         
         component_stats = self.expanded_df.groupby('component_type')['found'].agg(
-            ['sum', 'count', 'mean', 'std']
+            total='sum',      
+            n='count',         
+            mean='mean',
+            std='std'
         ).reset_index()
         component_stats = component_stats.sort_values('mean', ascending=False)
         
@@ -422,85 +428,14 @@ class ResultsVisualizer:
         ax.axvline(x=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         ax.grid(axis='x', alpha=0.3)
         
-        for i, (ct, mean, count) in enumerate(zip(component_stats['component_type'], 
-                                                    component_stats['mean'],
-                                                    component_stats['count'])):
-            ax.text(mean + 0.02, i, f'{mean:.1%} (n={int(count)})', 
+        for i, (ct, mean, n) in enumerate(zip(component_stats['component_type'], 
+                                               component_stats['mean'],
+                                               component_stats['n'])):
+            ax.text(mean + 0.02, i, f'{mean:.1%} (n={int(n)})', 
                    va='center', fontsize=10, fontweight='bold')
         
         plt.tight_layout()
         plt.savefig(self.output_dir / "03_follow_rate_by_component_type.png", dpi=300, bbox_inches='tight')
-        plt.close()
-    
-    def plot_rule_position_vs_text_position(self):
-        """Scatter plots: Rule position vs position in text"""
-        patterns = sorted(self.expanded_df['pattern'].unique())
-        n_patterns = len(patterns)
-        n_cols = 3
-        n_rows = (n_patterns + n_cols - 1) // n_cols
-        
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
-        if n_patterns == 1:
-            axes = [axes]
-        else:
-            axes = axes.flatten()
-        
-        for idx, pattern in enumerate(patterns):
-            ax = axes[idx]
-            pattern_data = self.expanded_df[
-                (self.expanded_df['pattern'] == pattern) & 
-                (self.expanded_df['found'] == True) &
-                (self.expanded_df['occurrences'] > 0)
-            ].copy()
-            
-            if len(pattern_data) == 0:
-                ax.text(0.5, 0.5, f"No data for pattern: {pattern}", 
-                       ha='center', va='center', transform=ax.transAxes)
-                ax.set_title(f"Pattern: {pattern}")
-                continue
-            
-            pattern_data['first_pos_in_text'] = pattern_data['positions_in_text'].apply(
-                lambda x: x[0] if x else -1
-            )
-            pattern_data = pattern_data[pattern_data['first_pos_in_text'] >= 0]
-            
-            if len(pattern_data) == 0:
-                ax.text(0.5, 0.5, f"No valid positions for: {pattern}", 
-                       ha='center', va='center', transform=ax.transAxes)
-                ax.set_title(f"Pattern: {pattern}")
-                continue
-            
-            ax.scatter(
-                pattern_data['position_in_rule'], 
-                pattern_data['first_pos_in_text'],
-                alpha=0.5, 
-                s=50,
-                c=pattern_data['position_in_rule'],
-                cmap='viridis',
-                edgecolors='black',
-                linewidths=0.5
-            )
-            
-            if len(pattern_data) > 2:
-                z = np.polyfit(pattern_data['position_in_rule'], 
-                              pattern_data['first_pos_in_text'], 1)
-                p = np.poly1d(z)
-                x_trend = np.linspace(pattern_data['position_in_rule'].min(), 
-                                     pattern_data['position_in_rule'].max(), 100)
-                ax.plot(x_trend, p(x_trend), "r--", alpha=0.8, linewidth=2, 
-                       label=f'Trend (slope={z[0]:.2f})')
-            
-            ax.set_xlabel("Position in Rule", fontsize=10)
-            ax.set_ylabel("Character Position in Text", fontsize=10)
-            ax.set_title(f"Pattern: {pattern}", fontsize=12, fontweight='bold')
-            ax.legend(fontsize=8)
-            ax.grid(True, alpha=0.3)
-        
-        for idx in range(n_patterns, len(axes)):
-            axes[idx].axis('off')
-        
-        plt.tight_layout()
-        plt.savefig(self.output_dir / "02_rule_position_vs_text_position.png", dpi=300, bbox_inches='tight')
         plt.close()
     
     def plot_primacy_recency_bias(self):
@@ -515,7 +450,10 @@ class ResultsVisualizer:
         )
         
         quintile_follow = self.expanded_df.groupby('position_quintile')['found'].agg(
-            ['sum', 'count', 'mean', 'std']
+            total='sum',      
+            n='count',
+            mean='mean',
+            std='std'
         ).reset_index()
         quintile_follow['follow_rate'] = quintile_follow['mean']
         
@@ -533,7 +471,7 @@ class ResultsVisualizer:
         for i, rate in enumerate(quintile_follow['follow_rate']):
             axes[0].text(i, rate + 0.03, f'{rate:.1%}', ha='center', fontweight='bold')
         
-        pattern_quintile = self.expanded_df.groupby(['pattern', 'position_quintile'])['found'].mean().unstack()
+        pattern_quintile = self.expanded_df.groupby(['pattern', 'position_quintile'], observed=True)['found'].mean().unstack()
         pattern_quintile.plot(kind='bar', ax=axes[1], alpha=0.8, width=0.8, edgecolor='black')
         axes[1].set_ylabel("Follow Rate", fontsize=12)
         axes[1].set_xlabel("Pattern Type", fontsize=12)
