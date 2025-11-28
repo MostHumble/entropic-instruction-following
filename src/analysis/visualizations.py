@@ -272,9 +272,9 @@ class ResultsVisualizer:
             
             position_stats = pattern_data.groupby(['position_in_rule', 'trial_id'])['found'].mean().reset_index()
             position_agg = position_stats.groupby('position_in_rule').agg(
-                mean='mean',
-                sem='sem',
-                n='count'
+                mean=('found', 'mean'),
+                sem=('found', 'sem'),
+                n=('found', 'count')
             ).reset_index()
             
             position_agg['position_pct'] = (position_agg['position_in_rule'] / max_position) * 100
@@ -483,6 +483,77 @@ class ResultsVisualizer:
         
         plt.tight_layout()
         plt.savefig(self.output_dir / "04_primacy_recency_bias.png", dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def plot_rule_position_vs_text_position(self):
+        """Scatter plots: Rule position vs position in text"""
+        patterns = sorted(self.expanded_df['pattern'].unique())
+        n_patterns = len(patterns)
+        n_cols = 3
+        n_rows = (n_patterns + n_cols - 1) // n_cols
+        
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
+        if n_patterns == 1:
+            axes = [axes]
+        else:
+            axes = axes.flatten()
+        
+        for idx, pattern in enumerate(patterns):
+            ax = axes[idx]
+            pattern_data = self.expanded_df[
+                (self.expanded_df['pattern'] == pattern) & 
+                (self.expanded_df['found'] == True) &
+                (self.expanded_df['occurrences'] > 0)
+            ].copy()
+            
+            if len(pattern_data) == 0:
+                ax.text(0.5, 0.5, f"No data for pattern: {pattern}", 
+                       ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(f"Pattern: {pattern}")
+                continue
+            
+            pattern_data['first_pos_in_text'] = pattern_data['positions_in_text'].apply(
+                lambda x: x[0] if x and len(x) > 0 else -1
+            )
+            pattern_data = pattern_data[pattern_data['first_pos_in_text'] >= 0]
+            
+            if len(pattern_data) == 0:
+                ax.text(0.5, 0.5, f"No valid positions for: {pattern}", 
+                       ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(f"Pattern: {pattern}")
+                continue
+            
+            ax.scatter(
+                pattern_data['position_in_rule'], 
+                pattern_data['first_pos_in_text'],
+                alpha=0.5, 
+                s=50,
+                c=pattern_data['position_in_rule'],
+                cmap='viridis',
+                edgecolors='black',
+                linewidths=0.5
+            )
+            
+            if len(pattern_data) > 2:
+                z = np.polyfit(pattern_data['position_in_rule'], 
+                              pattern_data['first_pos_in_text'], 1)
+                p = np.poly1d(z)
+                x_trend = np.linspace(pattern_data['position_in_rule'].min(), 
+                                     pattern_data['position_in_rule'].max(), 100)
+                ax.plot(x_trend, p(x_trend), "r--", alpha=0.8, linewidth=2, 
+                       label=f'Trend (slope={z[0]:.2f})')
+            
+            ax.set_xlabel("Position in Rule", fontsize=10)
+            ax.set_ylabel("Character Position in Text", fontsize=10)
+            ax.set_title(f"Pattern: {pattern}", fontsize=12, fontweight='bold')
+            ax.legend(fontsize=8)
+            ax.grid(True, alpha=0.3)
+        
+        for idx in range(n_patterns, len(axes)):
+            axes[idx].axis('off')
+        
+        plt.tight_layout()
+        plt.savefig(self.output_dir / "02_rule_position_vs_text_position.png", dpi=300, bbox_inches='tight')
         plt.close()
     
     def create_all(self):
