@@ -136,10 +136,10 @@ class MultiModelComparison:
         models = sorted(self.all_results['model'].unique())
         patterns = sorted(self.expanded_df['pattern'].unique())
         
-        model_pattern_scores = self.expanded_df.groupby(['model', 'pattern'])['found'].agg(
-            mean=('found', 'mean'),
-            sem=('found', 'sem')
-        ).reset_index()
+        model_pattern_scores = self.expanded_df.groupby(['model', 'pattern'])['found'].agg({
+            'mean': 'mean',
+            'sem': 'sem'
+        }).reset_index()
         
         x = np.arange(len(patterns))
         width = 0.8 / len(models)
@@ -168,10 +168,10 @@ class MultiModelComparison:
     
     def _plot_model_by_rule_length(self, ax):
         """Compare models across rule lengths"""
-        model_count_scores = self.expanded_df.groupby(['model', 'count'])['found'].agg(
-            mean=('found', 'mean'),
-            sem=('found', 'sem')
-        ).reset_index()
+        model_count_scores = self.expanded_df.groupby(['model', 'count'])['found'].agg({
+            'mean': 'mean',
+            'sem': 'sem'
+        }).reset_index()
         
         models = sorted(model_count_scores['model'].unique())
         
@@ -209,10 +209,10 @@ class MultiModelComparison:
             model_data['position_pct'] = (model_data['position_in_rule'] / max_pos * 100).astype(int)
             
             position_stats = model_data.groupby(['position_pct', 'trial_id'])['found'].mean().reset_index()
-            position_agg = position_stats.groupby('position_pct').agg(
-                mean=('found', 'mean'),
-                sem=('found', 'sem')
-            ).reset_index()
+            position_agg = position_stats.groupby('position_pct')['found'].agg({
+                'mean': 'mean',
+                'sem': 'sem'
+            }).reset_index()
             
             # Sample every 5th point for clarity
             step = max(1, len(position_agg) // 20)
@@ -265,10 +265,10 @@ class MultiModelComparison:
         
         self.expanded_df['pattern_type'] = self.expanded_df['pattern'].apply(classify_pattern)
         
-        model_type_scores = self.expanded_df.groupby(['model', 'pattern_type'])['found'].agg(
-            mean=('found', 'mean'),
-            sem=('found', 'sem')
-        ).reset_index()
+        model_type_scores = self.expanded_df.groupby(['model', 'pattern_type'])['found'].agg({
+            'mean': 'mean',
+            'sem': 'sem'
+        }).reset_index()
         
         models = sorted(model_type_scores['model'].unique())
         pattern_types = ['Coherent', 'Random', 'Mixed']
