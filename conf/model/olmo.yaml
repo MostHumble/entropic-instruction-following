@@ -1,4 +1,4 @@
-# conf/model/olmo.yaml
+# @package _global_
 
 model:
   name: allenai/Olmo-3-7B-Instruct

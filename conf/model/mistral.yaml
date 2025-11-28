@@ -1,4 +1,4 @@
-# conf/model/mistral.yaml
+# @package _global_
 
 model:
-  name: "mistralai/Mistral-Nemo-Instruct-2407"
+  name: mistralai/Mistral-7B-Instruct-v0.1

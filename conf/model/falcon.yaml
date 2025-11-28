@@ -1,0 +1,4 @@
+# @package _global_
+
+model:
+  name: tiiuae/Falcon-H1-7B-Instruct

@@ -1,4 +1,0 @@
-# conf/model/qwen.yaml
-
-model:
-  name: "Qwen/Qwen2.5-7B-Instruct-1M"
