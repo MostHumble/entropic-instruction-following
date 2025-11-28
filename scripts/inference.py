@@ -2,6 +2,7 @@ import hydra
 import json
 import logging
 import os
+import gc
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ import pandas as pd
 from omegaconf import DictConfig, OmegaConf
 from huggingface_hub import login
 from vllm import LLM, SamplingParams
+from vllm.distributed.parallel_state import destroy_model_parallel
 
 from src.evaluator import Evaluator
 from src.utils import get_strategy, load_dataset
@@ -107,6 +109,8 @@ def run_inference_for_model(
         model=model_cfg.model.name,
         max_model_len=model_cfg.inference.max_model_len,
         trust_remote_code=model_cfg.inference.trust_remote_code,
+        gpu_memory_utilization=90.0,
+        dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     )
     
     sampling_params = SamplingParams(
@@ -118,6 +122,11 @@ def run_inference_for_model(
     # Generate outputs
     logger.info("Generating outputs...")
     outputs = llm.generate(prompts, sampling_params)
+
+    del llm
+    gc.collect()
+    destroy_model_parallel()
+    torch.cuda.empty_cache()
     
     # Evaluate & save results
     results = []
