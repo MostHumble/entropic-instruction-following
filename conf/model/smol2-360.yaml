@@ -1,0 +1,4 @@
+# @package _global_
+
+model:
+  name: "HuggingFaceTB/SmolLM2-360M-Instruct"
