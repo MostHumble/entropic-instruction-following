@@ -94,12 +94,12 @@ class WordDataGenerator:
             raise ValueError(f"Unknown component: {component}")
 
     def get_coherent_list(self, n: int, seeds: Optional[List[str]] = None) -> Tuple[List[str], Dict]:
-        """Generates semantically related words using seeds in order, no random fallback.
-        
+        """Generates semantically related words using seeds in order, with random sampling.
+    
         Args:
             n: Number of words to generate
             seeds: Optional list of seeds to use (defaults to self.seeds)
-        
+    
         Returns:
             Tuple of (word_list, metadata) where metadata contains seed contribution info.
         """
@@ -122,9 +122,12 @@ class WordDataGenerator:
             words = [w for w in words if '_' not in w]
             if self.alphanumeric_only:
                 words = [w for w in words if w.isalnum()]
-            
+        
             # Remove duplicates already in pool
             words = [w for w in words if w not in pool]
+            
+            # Shuffle to add randomness
+            random.shuffle(words)
             
             # Take only what we need from this seed
             to_take = min(needed, len(words))
@@ -138,18 +141,18 @@ class WordDataGenerator:
             })
             
             needed -= to_take
-        
+    
         if needed > 0:
             logger.error(f"Could not generate {n} coherent words. Only {n - needed} words available from seeds.")
             raise ValueError(f"Insufficient coherent words available. Requested {n}, got {n - needed}")
-        
+    
         metadata = {
             "total_requested": n,
             "total_generated": len(pool),
             "seed_contributions": seed_contributions,
             "seeds_used": [sc["seed"] for sc in seed_contributions]
         }
-        
+    
         return pool, metadata
 
     def get_chaotic_list(self, n: int) -> List[str]:
