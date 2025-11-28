@@ -3,14 +3,14 @@ defaults:
   - strategy: standard.yaml
 
 experiment:
-  rule_counts: [200] # null = test all counts, or specify list like [50, 100, 200]
+  rule_counts: [50, 200, 400] # null = test all counts, or specify list like [50, 100, 200]
   patterns: ["c|r", "r|c|r", "c|r|c", "cr", "r", "c"]  # null = test all patterns, or specify list like ["c", "r", "cr"]
   results_dir: "data/results"
   models: ["qwen2.5-0.5", "smol2-360"]  # null = use all models in conf/model/, or specify list like ["mistral", "llama"]
 
 word_data_generator:
   dataset_path: "data/raw/dataset_v1.json"
-  trials_per_count: 3
+  trials_per_count: 5
   seeds: ["food.n.02", "artifact.n.01"]  # List of WordNet synset seeds
   rule_counts: [50, 100, 200, 400, 800]
   # Pattern mixing experiments
@@ -32,4 +32,4 @@ inference:
   sampling:
     temperature: 0
     top_p: 1.0
-    max_tokens: 1024
+    max_tokens: 2048
