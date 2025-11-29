@@ -108,12 +108,21 @@ def run_inference_for_model(
     
     # Initialize vLLM
     logger.info("Initializing vLLM...")
+    
+    # Detect number of available GPUs
+    n_gpus = torch.cuda.device_count()
+    logger.info(f"Detected {n_gpus} GPU(s)")
+    
+    # Configure tensor parallelism for multi-GPU setup
     llm = LLM(
         model=model_cfg.model.name,
         max_model_len=model_cfg.inference.max_model_len,
         trust_remote_code=model_cfg.inference.trust_remote_code,
         gpu_memory_utilization=0.85,
+        tensor_parallel_size=n_gpus,  # Use all available GPUs
     )
+    
+    logger.info(f"vLLM initialized with tensor_parallel_size={n_gpus}")
     
     sampling_params = SamplingParams(
         temperature=model_cfg.inference.sampling.temperature,
