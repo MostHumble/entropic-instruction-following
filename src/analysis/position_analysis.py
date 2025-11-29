@@ -5,7 +5,7 @@ from typing import Dict
 
 def analyze_positions(results_csv: str) -> Dict:
     """
-    Analyze position-based patterns in rule following.
+    Analyze position-based patterns in rule following with seed awareness.
     
     Returns:
         Dictionary containing various position analysis metrics
@@ -15,11 +15,16 @@ def analyze_positions(results_csv: str) -> Dict:
     # Expand word details
     expanded_rows = []
     for _, row in df.iterrows():
+        seed = row.get('seed', 'unknown')
+        trial_id = row.get('trial', 0)
+        
         word_details = json.loads(row['word_details'])
         for wd in word_details:
             expanded_rows.append({
                 'pattern': row['pattern'],
                 'count': row['count'],
+                'seed': seed,
+                'trial_id': trial_id,
                 'position_in_rule': wd['position'],
                 'word': wd['word'],
                 'found': wd['found'],

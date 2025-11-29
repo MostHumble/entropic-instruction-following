@@ -49,8 +49,12 @@ class ResultsVisualizer:
         expanded_rows = []
         
         for _, row in self.df.iterrows():
-            trial_id = int(row['id'].split('_')[-2])
-            config_id = '_'.join(row['id'].split('_')[:-2])
+            # Extract seed and trial from the row (new data structure)
+            seed = row.get('seed', 'unknown')
+            trial_id = row.get('trial', 0)
+            
+            # Create config_id without trial info for grouping
+            config_id = f"{seed}_{row['pattern']}_{row['count']}"
             
             word_details = json.loads(row['word_details'])
             for wd in word_details:
@@ -58,13 +62,14 @@ class ResultsVisualizer:
                     'pattern': row['pattern'],
                     'count': row['count'], 
                     'score': row['score'],
+                    'seed': seed,
+                    'trial_id': trial_id,
                     'position_in_rule': wd['position'],
                     'word': wd['word'],
                     'found': wd['found'],
                     'positions_in_text': wd['positions_in_text'],
                     'occurrences': wd['occurrences'],
                     'sample_id': row['id'],
-                    'trial_id': trial_id,
                     'config_id': config_id
                 })
         
@@ -325,6 +330,134 @@ class ResultsVisualizer:
                        dpi=300, bbox_inches='tight')
             plt.close()
     
+    def plot_seed_variance_analysis(self):
+        """NEW: Visualize variance across seeds vs within seeds"""
+        rule_counts = sorted(self.expanded_df['count'].unique())
+        
+        for count in rule_counts:
+            count_dir = self.output_dir / f"{count}_rules"
+            count_dir.mkdir(parents=True, exist_ok=True)
+            
+            count_data = self.expanded_df[self.expanded_df['count'] == count]
+            patterns = sorted(count_data['pattern'].unique())
+            
+            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+            
+            # Plot 1: Seed-level means with error bars
+            ax1 = axes[0, 0]
+            seed_means = count_data.groupby(['pattern', 'seed'])['found'].mean().reset_index()
+            
+            for pattern in patterns:
+                pattern_seeds = seed_means[seed_means['pattern'] == pattern]
+                x_pos = np.arange(len(pattern_seeds))
+                color = self.color_map.get(pattern, 'steelblue')
+                ax1.scatter(x_pos, pattern_seeds['found'], label=pattern, 
+                           alpha=0.6, s=100, color=color)
+            
+            ax1.set_xlabel("Seed Index", fontsize=11)
+            ax1.set_ylabel("Follow Rate", fontsize=11)
+            ax1.set_title("Seed-Level Performance Variation", fontsize=12, fontweight='bold')
+            ax1.legend(title="Pattern", fontsize=9)
+            ax1.set_ylim(0, 1.0)
+            ax1.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+            ax1.grid(True, alpha=0.3)
+            
+            # Plot 2: Variance decomposition
+            ax2 = axes[0, 1]
+            variance_data = []
+            for pattern in patterns:
+                pattern_df = count_data[count_data['pattern'] == pattern]
+                
+                # Between-seed variance
+                seed_means_vals = pattern_df.groupby('seed')['found'].mean()
+                var_between = seed_means_vals.var()
+                
+                # Within-seed variance
+                within_seed_vars = pattern_df.groupby('seed')['found'].var()
+                var_within = within_seed_vars.mean()
+                
+                variance_data.append({
+                    'pattern': pattern,
+                    'between_seed': var_between,
+                    'within_seed': var_within
+                })
+            
+            var_df = pd.DataFrame(variance_data)
+            x = np.arange(len(var_df))
+            width = 0.35
+            
+            ax2.bar(x - width/2, var_df['between_seed'], width, 
+                   label='Between-seed variance', alpha=0.8)
+            ax2.bar(x + width/2, var_df['within_seed'], width,
+                   label='Within-seed variance', alpha=0.8)
+            
+            ax2.set_xlabel("Pattern", fontsize=11)
+            ax2.set_ylabel("Variance", fontsize=11)
+            ax2.set_title("Variance Decomposition", fontsize=12, fontweight='bold')
+            ax2.set_xticks(x)
+            ax2.set_xticklabels(var_df['pattern'], rotation=45, ha='right')
+            ax2.legend(fontsize=9)
+            ax2.grid(axis='y', alpha=0.3)
+            
+            # Plot 3: ICC (consistency) across patterns
+            ax3 = axes[1, 0]
+            icc_data = []
+            for pattern in patterns:
+                pattern_df = count_data[count_data['pattern'] == pattern]
+                seed_means_vals = pattern_df.groupby('seed')['found'].mean()
+                var_between = seed_means_vals.var()
+                within_seed_vars = pattern_df.groupby('seed')['found'].var()
+                var_within = within_seed_vars.mean()
+                
+                icc = var_between / (var_between + var_within) if (var_between + var_within) > 0 else 0
+                icc_data.append({'pattern': pattern, 'icc': icc})
+            
+            icc_df = pd.DataFrame(icc_data)
+            colors_list = [self.color_map.get(p, 'steelblue') for p in icc_df['pattern']]
+            
+            ax3.bar(range(len(icc_df)), icc_df['icc'], alpha=0.8, color=colors_list)
+            ax3.set_xlabel("Pattern", fontsize=11)
+            ax3.set_ylabel("ICC (Seed Consistency)", fontsize=11)
+            ax3.set_title("Intraclass Correlation (Seed Consistency)", fontsize=12, fontweight='bold')
+            ax3.set_xticks(range(len(icc_df)))
+            ax3.set_xticklabels(icc_df['pattern'], rotation=45, ha='right')
+            ax3.set_ylim(0, 1.0)
+            ax3.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, 
+                       label='Moderate consistency')
+            ax3.axhline(y=0.75, color='green', linestyle='--', alpha=0.5,
+                       label='High consistency')
+            ax3.legend(fontsize=8)
+            ax3.grid(axis='y', alpha=0.3)
+            
+            # Plot 4: Box plot showing distribution across seeds
+            ax4 = axes[1, 1]
+            box_data = []
+            box_labels = []
+            for pattern in patterns:
+                pattern_seeds = seed_means[seed_means['pattern'] == pattern]['found'].values
+                box_data.append(pattern_seeds)
+                box_labels.append(pattern)
+            
+            bp = ax4.boxplot(box_data, labels=box_labels, patch_artist=True)
+            for patch, pattern in zip(bp['boxes'], box_labels):
+                patch.set_facecolor(self.color_map.get(pattern, 'steelblue'))
+                patch.set_alpha(0.6)
+            
+            ax4.set_xlabel("Pattern", fontsize=11)
+            ax4.set_ylabel("Follow Rate (Seed-Level)", fontsize=11)
+            ax4.set_title("Distribution of Seed-Level Performance", fontsize=12, fontweight='bold')
+            ax4.set_ylim(0, 1.0)
+            ax4.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+            ax4.grid(axis='y', alpha=0.3)
+            plt.setp(ax4.xaxis.get_majorticklabels(), rotation=45, ha='right')
+            
+            plt.suptitle(f"Seed-Level Variance Analysis ({count} rules)", 
+                        fontsize=15, fontweight='bold', y=0.995)
+            plt.tight_layout()
+            plt.savefig(count_dir / "03_seed_variance_analysis.png", 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
+
     def create_all(self):
         """Generate all visualizations"""
         print("Generating visualizations...")
@@ -340,5 +473,8 @@ class ResultsVisualizer:
         
         self.plot_rule_position_vs_text_position()
         print("✅ Rule position vs text position (organized by rule count)")
+        
+        self.plot_seed_variance_analysis()
+        print("✅ Seed variance analysis (NEW)")
         
         print(f"📊 All visualizations saved to {self.output_dir}")
