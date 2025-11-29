@@ -58,102 +58,44 @@ class WordDataGenerator:
             components = re.findall(r'[cr]\d*', pattern)
             return ('repeating', components)
 
-    def get_words_for_component(self, component: str, n: int) -> Tuple[List[str], Dict]:
-        """
-        Get words for a specific component (e.g., 'c', 'r', 'c1', 'c2').
-        
-        Args:
-            component: Component identifier ('c', 'r', 'c1', 'c2', etc.)
-            n: Number of words needed
-            
-        Returns:
-            Tuple of (words, metadata)
-        """
-        if component == 'r':
-            # Random words
-            words = self.get_chaotic_list(n)
-            metadata = {
-                "type": "random",
-                "count": n
-            }
-            return words, metadata
-        elif component.startswith('c'):
-            # Coherent words, possibly with seed index
-            seed_idx = int(component[1:]) if len(component) > 1 else None
-            
-            if seed_idx is not None and seed_idx < len(self.seeds):
-                # Use specific seed
-                seeds = [self.seeds[seed_idx]]
-            else:
-                # Use all seeds
-                seeds = self.seeds
-                
-            words, metadata = self.get_coherent_list(n, seeds=seeds)
-            return words, metadata
-        else:
-            raise ValueError(f"Unknown component: {component}")
-
-    def get_coherent_list(self, n: int, seeds: Optional[List[str]] = None) -> Tuple[List[str], Dict]:
-        """Generates semantically related words using seeds in order, with random sampling.
+    def get_coherent_list(self, n: int, seed: str) -> Tuple[List[str], Dict]:
+        """Generates semantically related words from a single seed, with shuffling.
     
         Args:
             n: Number of words to generate
-            seeds: Optional list of seeds to use (defaults to self.seeds)
+            seed: Single seed synset to use
     
         Returns:
-            Tuple of (word_list, metadata) where metadata contains seed contribution info.
+            Tuple of (word_list, metadata) where metadata contains seed info.
         """
-        seeds = seeds or self.seeds
-        pool = []
-        needed = n
-        seed_contributions = []
+        try:
+            seed_synset = wn.synset(seed)
+        except Exception as e:
+            logger.error(f"Seed synset '{seed}' not found: {e}")
+            raise ValueError(f"Invalid seed: {seed}")
         
-        for seed in seeds:
-            if needed <= 0:
-                break
-                
-            try:
-                seed_synset = wn.synset(seed)
-            except Exception as e:
-                logger.warning(f"Seed synset '{seed}' not found: {e}")
-                continue
-                
-            words = {w.replace('_', ' ') for s in seed_synset.closure(lambda s: s.hyponyms()) for w in s.lemma_names()}
-            words = [w for w in words if '_' not in w]
-            if self.alphanumeric_only:
-                words = [w for w in words if w.isalnum()]
+        # Get all words from this seed's hyponym closure
+        words = {w.replace('_', ' ') for s in seed_synset.closure(lambda s: s.hyponyms()) for w in s.lemma_names()}
+        words = [w for w in words if '_' not in w]
+        if self.alphanumeric_only:
+            words = [w for w in words if w.isalnum()]
         
-            # Remove duplicates already in pool
-            words = [w for w in words if w not in pool]
-            
-            # Shuffle to add randomness
-            random.shuffle(words)
-            
-            # Take only what we need from this seed
-            to_take = min(needed, len(words))
-            pool.extend(words[:to_take])
-            
-            # Track contribution
-            seed_contributions.append({
-                "seed": seed,
-                "words_contributed": to_take,
-                "words_available": len(words)
-            })
-            
-            needed -= to_take
-    
-        if needed > 0:
-            logger.error(f"Could not generate {n} coherent words. Only {n - needed} words available from seeds.")
-            raise ValueError(f"Insufficient coherent words available. Requested {n}, got {n - needed}")
-    
+        # Check if we have enough
+        if len(words) < n:
+            logger.warning(f"Seed '{seed}' only has {len(words)} words, need {n}. Skipping.")
+            raise ValueError(f"Insufficient words for seed '{seed}': has {len(words)}, need {n}")
+        
+        # Shuffle the full pool
+        random.shuffle(words)
+        
         metadata = {
-            "total_requested": n,
-            "total_generated": len(pool),
-            "seed_contributions": seed_contributions,
-            "seeds_used": [sc["seed"] for sc in seed_contributions]
+            "seed": seed,
+            "words_available": len(words),
+            "words_requested": n,
+            "words_pool": words  # Store full shuffled pool for sampling
         }
-    
-        return pool, metadata
+        
+        return words, metadata
 
     def get_chaotic_list(self, n: int) -> List[str]:
         available_words = self.all_words
@@ -164,61 +106,75 @@ class WordDataGenerator:
             raise ValueError(f"Insufficient words available. Requested {n}, got {len(available_words)}")
         return random.sample(available_words, n)
 
-    def get_mixed_list(self, n: int, pattern: str) -> Tuple[List[str], Dict]:
+    def get_mixed_list(self, n: int, pattern: str, seed: str, coherent_pool: Optional[List[str]] = None) -> Tuple[List[str], Dict]:
         """
-        Generate a mixed word list based on a pattern.
+        Generate a mixed word list based on a pattern, using a specific seed.
         
         Args:
             n: Total number of words
             pattern: Pattern string (e.g., 'cr', 'c|r|c', 'c1c2', 'cccr')
+            seed: Specific seed to use for coherent parts
+            coherent_pool: Pre-generated shuffled pool of coherent words (optional)
             
         Returns:
             Tuple of (word_list, metadata)
-            
-        Examples:
-            get_mixed_list(12, 'cr') -> c,r,c,r,c,r,c,r,c,r,c,r (alternating, different words)
-            get_mixed_list(12, 'c|r|c') -> [4 coherent], [4 random], [4 coherent] (blocks)
-            get_mixed_list(12, 'cccr') -> c,c,c,r,c,c,c,r,c,c,c,r (3:1 pulse)
         """
         mode, components = self.parse_pattern(pattern)
         
-        # First, determine how many words we need from each component type
+        # Count words needed per component type
         component_counts = {}
         
         if mode == 'repeating':
-            # Count how many times each component appears in the full sequence
             pattern_length = len(components)
             for i in range(n):
                 component = components[i % pattern_length]
                 component_counts[component] = component_counts.get(component, 0) + 1
                 
         else:  # blocked mode
-            # Split n into equal blocks
             num_blocks = len(components)
             block_size = n // num_blocks
             remainder = n % num_blocks
             
             for idx, component in enumerate(components):
-                # Distribute remainder across first blocks
                 current_block_size = block_size + (1 if idx < remainder else 0)
                 component_counts[component] = component_counts.get(component, 0) + current_block_size
         
-        # Now fetch all words needed for each component type
+        # Fetch words for each component type
         component_pools = {}
         component_metadata = {}
         
         for component, count in component_counts.items():
-            words, metadata = self.get_words_for_component(component, count)
-            component_pools[component] = words
-            component_metadata[component] = metadata
+            if component == 'r':
+                words = self.get_chaotic_list(count)
+                metadata = {"type": "random", "count": count}
+                component_pools[component] = words
+                component_metadata[component] = metadata
+            elif component.startswith('c'):
+                # Use provided pool or generate new one
+                if coherent_pool is None:
+                    pool, metadata = self.get_coherent_list(count, seed)
+                    component_pools[component] = pool[:count]
+                    component_metadata[component] = metadata
+                else:
+                    # Sample from pre-generated pool
+                    if len(coherent_pool) < count:
+                        raise ValueError(f"Coherent pool has {len(coherent_pool)} words, need {count}")
+                    component_pools[component] = coherent_pool[:count]
+                    coherent_pool = coherent_pool[count:]  # Remove used words
+                    component_metadata[component] = {
+                        "type": "coherent",
+                        "seed": seed,
+                        "count": count
+                    }
+            else:
+                raise ValueError(f"Unknown component: {component}")
         
-        # Build the final sequence according to the pattern
+        # Build the final sequence
         result = []
         component_indices = {comp: 0 for comp in component_pools}
         position_details = []
         
         if mode == 'repeating':
-            # Cycle through components, taking one word at a time
             pattern_length = len(components)
             for i in range(n):
                 component = components[i % pattern_length]
@@ -238,12 +194,13 @@ class WordDataGenerator:
                 "pattern": pattern,
                 "mode": "repeating",
                 "total_words": n,
+                "seed": seed,
                 "component_counts": component_counts,
+                "component_metadata": component_metadata,
                 "position_details": position_details
             }
             
         else:  # blocked mode
-            # Add words block by block
             block_metadata = []
             num_blocks = len(components)
             block_size = n // num_blocks
@@ -253,7 +210,6 @@ class WordDataGenerator:
                 current_block_size = block_size + (1 if idx < remainder else 0)
                 start_pos = len(result)
                 
-                # Take the next chunk from this component's pool
                 comp_idx = component_indices[component]
                 block_words = component_pools[component][comp_idx:comp_idx + current_block_size]
                 result.extend(block_words)
@@ -272,45 +228,66 @@ class WordDataGenerator:
                 "pattern": pattern,
                 "mode": "blocked",
                 "total_words": n,
+                "seed": seed,
                 "component_counts": component_counts,
+                "component_metadata": component_metadata,
                 "blocks": block_metadata
             }
         
         return result, final_metadata
 
-    def generate_dataset(self, rule_counts: List[int], trials: int, patterns: Optional[List[str]] = None) -> List[Dict]:
+    def generate_dataset(self, rule_counts: List[int], trials_per_seed: int, patterns: Optional[List[str]] = None) -> List[Dict]:
         """
         Creates a standardized dataset for experimentation.
         
         Args:
             rule_counts: List of word counts to test
-            trials: Number of trials per count
-            patterns: Optional list of mixing patterns to include (e.g., ['c', 'r', 'cr', 'c|r|c'])
+            trials_per_seed: Number of trials per seed (samples from shuffled pool)
+            patterns: Optional list of mixing patterns to include
         """
-        patterns = patterns or ['c', 'r']  # Default: pure coherent and pure random
+        patterns = patterns or ['c', 'r']
         dataset = []
         
         for count in rule_counts:
-            for trial_idx in range(trials):
-                for pattern in patterns:
-                    words, metadata = self.get_mixed_list(count, pattern)
-                    
-                    # Determine type label
-                    if pattern == 'c':
-                        type_label = 'coherent'
-                    elif pattern == 'r':
-                        type_label = 'chaotic'
-                    else:
-                        type_label = f'mixed_{pattern}'
-                    
-                    dataset.append({
-                        "id": f"{type_label}_{count}_{trial_idx}_{random.randint(1000,9999)}",
-                        "type": type_label,
-                        "pattern": pattern,
-                        "count": count,
-                        "words": words,
-                        "metadata": metadata
-                    })
+            for seed_idx, seed in enumerate(self.seeds):
+                # Generate coherent pool once per seed per count
+                try:
+                    coherent_pool, _ = self.get_coherent_list(count * trials_per_seed * len(patterns), seed)
+                except ValueError as e:
+                    logger.warning(f"Skipping seed '{seed}' for count {count}: {e}")
+                    continue
+                
+                # Shuffle once for all trials from this seed
+                random.shuffle(coherent_pool)
+                
+                for trial_idx in range(trials_per_seed):
+                    for pattern in patterns:
+                        try:
+                            # Sample from the shuffled pool
+                            words, metadata = self.get_mixed_list(n=count, pattern=pattern, seed=seed, coherent_pool=coherent_pool.copy())
+                            
+                            # Determine type label
+                            if pattern == 'c':
+                                type_label = 'coherent'
+                            elif pattern == 'r':
+                                type_label = 'chaotic'
+                            else:
+                                type_label = f'mixed_{pattern}'
+                            
+                            dataset.append({
+                                "id": f"{type_label}_{count}_{seed_idx}_{trial_idx}_{random.randint(1000,9999)}",
+                                "type": type_label,
+                                "pattern": pattern,
+                                "count": count,
+                                "seed": seed,
+                                "seed_idx": seed_idx,
+                                "trial_id": trial_idx,
+                                "words": words,
+                                "metadata": metadata
+                            })
+                        except ValueError as e:
+                            logger.warning(f"Skipping seed '{seed}' trial {trial_idx} for pattern '{pattern}' count {count}: {e}")
+                            continue
         
         return dataset
 

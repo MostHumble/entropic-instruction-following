@@ -1,0 +1,2175 @@
+Directory structure:
+└── entropic-instruction-following/
+    ├── README.md
+    ├── pyproject.toml
+    ├── .env.example
+    ├── .python-version
+    ├── conf/
+    │   ├── config.yaml
+    │   ├── model/
+    │   │   ├── falcon.yaml
+    │   │   ├── llama.yaml
+    │   │   ├── mistral.yaml
+    │   │   ├── olmo.yaml
+    │   │   ├── qwen.yaml
+    │   │   ├── qwen2.5-0.5.yaml
+    │   │   └── smol2-360.yaml
+    │   └── strategy/
+    │       ├── indexed.yaml
+    │       └── standard.yaml
+    ├── notebooks/
+    ├── scripts/
+    │   ├── analyze_results.py
+    │   ├── generate_data.py
+    │   └── inference.py
+    └── src/
+        ├── __init__.py
+        ├── evaluator.py
+        ├── generators.py
+        ├── runner.py
+        ├── strategies.py
+        ├── utils.py
+        └── analysis/
+            ├── __init__.py
+            ├── comparison.py
+            ├── position_analysis.py
+            ├── statistics.py
+            └── visualizations.py
+
+================================================
+File: README.md
+================================================
+
+
+
+================================================
+File: pyproject.toml
+================================================
+[project]
+name = "entropic-instruction-following"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "huggingface-hub>=0.36.0",
+    "hydra-core>=1.3.2",
+    "matplotlib>=3.10.7",
+    "nltk>=3.9.2",
+    "omegaconf>=2.3.0",
+    "pandas>=2.3.3",
+    "python-dotenv>=1.2.1",
+    "seaborn>=0.13.2",
+    "vllm>=0.11.2",
+]
+
+
+
+================================================
+File: .env.example
+================================================
+HF_TOKEN=your_huggingface_token_here
+
+
+================================================
+File: .python-version
+================================================
+3.10
+
+
+
+================================================
+File: conf/config.yaml
+================================================
+defaults:
+  - _self_
+  - strategy: standard.yaml
+
+experiment:
+  rule_counts: [50, 200, 400] # null = test all counts, or specify list like [50, 100, 200]
+  patterns: ["r|c","c|r", "r|c|r", "c|r|c", "cr", "r", "c"]  # null = test all patterns, or specify list like ["c", "r", "cr"]
+  results_dir: "data/results"
+  models: ["qwen", "olmo", "falcon", "llama", "mistral"]  # null = use all models in conf/model/, or specify list like ["mistral", "llama"]
+
+word_data_generator:
+  dataset_path: "data/raw/dataset_v1.json"
+  trials_per_count: 10
+  seeds: ["food.n.02", "artifact.n.01"]  # List of WordNet synset seeds
+  rule_counts: [50, 100, 200, 400, 800]
+  # Pattern mixing experiments
+  patterns:
+    - "c"        # Pure coherent
+    - "r"        # Pure random
+    - "cr"       # Alternating
+    - "cccr"     # Pulse (3:1 ratio)
+    - "c|r"      # Half coherent, half random
+    - "r|c"      # Half random, half coherent
+    - "c|r|c"    # Bookends (coherent-random-coherent)
+    - "r|c|r"    # Inverse bookends
+    - "c0|c1"    # Multi-seed (first seed | second seed)
+  alphanumeric_only: true
+  
+# These can be overridden by the specific model yamls
+inference:
+  trust_remote_code: false
+  max_model_len: 12288
+  sampling:
+    temperature: 0
+    top_p: 1.0
+    max_tokens: 4096
+
+
+================================================
+File: conf/model/falcon.yaml
+================================================
+# @package _global_
+
+model:
+  name: tiiuae/Falcon-H1-7B-Instruct
+
+
+================================================
+File: conf/model/llama.yaml
+================================================
+# @package _global_
+
+model:
+  name: "meta-llama/Llama-3.2-1B-Instruct"
+
+
+
+================================================
+File: conf/model/mistral.yaml
+================================================
+# @package _global_
+
+model:
+  name: mistralai/Mistral-7B-Instruct-v0.1
+
+
+
+================================================
+File: conf/model/olmo.yaml
+================================================
+# @package _global_
+
+model:
+  name: allenai/Olmo-3-7B-Instruct
+
+
+================================================
+File: conf/model/qwen.yaml
+================================================
+# @package _global_
+
+model:
+  name: "Qwen/Qwen2.5-7B-Instruct-1M"
+
+
+
+================================================
+File: conf/model/qwen2.5-0.5.yaml
+================================================
+# @package _global_
+
+model:
+  name: "Qwen/Qwen2.5-0.5B-Instruct"
+
+
+================================================
+File: conf/model/smol2-360.yaml
+================================================
+# @package _global_
+
+model:
+  name: "HuggingFaceTB/SmolLM2-360M-Instruct"
+
+
+================================================
+File: conf/strategy/indexed.yaml
+================================================
+name: "Indexed_Strategy"
+description: "Strategy that uses an indexed approach for instruction following."
+
+
+================================================
+File: conf/strategy/standard.yaml
+================================================
+name: "Standard_Story"
+description: "Baseline strategy asking for a story."
+
+
+
+================================================
+File: scripts/analyze_results.py
+================================================
+import hydra
+import sys
+from pathlib import Path
+from omegaconf import DictConfig
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.analysis.visualizations import ResultsVisualizer
+from src.analysis.statistics import generate_summary_statistics
+from src.analysis.comparison import MultiModelComparison
+
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
+def main(cfg: DictConfig):
+    """Analyze experiment results using Hydra config"""
+    
+    results_dir = Path(cfg.experiment.results_dir)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    
+    # First: Generate multi-model comparison
+    print(f"📊 Analyzing all results in: {results_dir}")
+    
+    try:
+        comparison = MultiModelComparison(str(results_dir))
+        comparison.plot_model_comparison_comprehensive()
+        summary = comparison.get_summary()
+        print(summary)
+        
+        # Save comparison summary
+        with open(results_dir / "model_comparison_summary.txt", 'w') as f:
+            f.write(summary)
+    
+    except FileNotFoundError as e:
+        print(f"⚠️  {e}")
+        print("No results found. Run run_experiment.py first.")
+        return
+    
+    # Then: Analyze each model individually
+    import glob
+    for csv_file in results_dir.glob("results_*.csv"):
+        # Extract model name from filename
+        parts = csv_file.stem.split('_')
+        if len(parts) >= 3:
+            model_name = '_'.join(parts[2:])
+        else:
+            model_name = 'unknown'
+        
+        print(f"\n🔍 Analyzing {model_name}...")
+        
+        # Create model-specific output directory
+        model_output_dir = results_dir / model_name
+        model_output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate visualizations
+        visualizer = ResultsVisualizer(str(csv_file), str(model_output_dir))
+        visualizer.create_all()
+        
+        # Generate statistics
+        summary_path = model_output_dir / "analysis_summary.txt"
+        generate_summary_statistics(str(csv_file), str(summary_path))
+
+
+if __name__ == "__main__":
+    main()
+
+
+================================================
+File: scripts/generate_data.py
+================================================
+import hydra
+import sys
+from pathlib import Path
+from omegaconf import DictConfig
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.generators import WordDataGenerator
+import logging
+
+logger = logging.getLogger(__name__)
+
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
+def main(cfg: DictConfig):
+    logger.info("Starting Data Generation...")
+    
+    gen = WordDataGenerator(
+        alphanumeric_only=cfg.word_data_generator.alphanumeric_only,
+        seeds=cfg.word_data_generator.seeds
+    )
+    
+    counts = cfg.word_data_generator.rule_counts
+    trials = cfg.word_data_generator.trials_per_count
+    patterns = cfg.word_data_generator.get('patterns', ['c', 'r'])
+    
+    logger.info(f"Generating for counts: {counts}")
+    logger.info(f"Using patterns: {patterns}")
+    dataset = gen.generate_dataset(rule_counts=counts, trials=trials, patterns=patterns)
+    
+    gen.save_dataset(dataset, cfg.word_data_generator.dataset_path)
+    logger.info(f"Generated {len(dataset)} samples")
+
+if __name__ == "__main__":
+    main()
+
+
+================================================
+File: scripts/inference.py
+================================================
+import hydra
+import json
+import logging
+import os
+import gc
+import sys
+from pathlib import Path
+from dotenv import load_dotenv
+from typing import List
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import torch
+import pandas as pd
+from omegaconf import DictConfig, OmegaConf
+from huggingface_hub import login
+from vllm import LLM, SamplingParams
+from vllm.distributed.parallel_state import destroy_model_parallel
+
+from src.evaluator import Evaluator
+from src.utils import get_strategy, load_dataset
+
+logger = logging.getLogger(__name__)
+
+# Load environment and authenticate
+load_dotenv()
+HF_TOKEN = os.getenv("HF_TOKEN")
+if not HF_TOKEN:
+    logger.warning("HF_TOKEN not set. Gated models may fail to load.")
+else:
+    login(token=HF_TOKEN)
+
+
+def get_available_models(conf_path: str = "conf/model") -> List[str]:
+    """Get list of available model configs"""
+    model_dir = Path(conf_path)
+    models = [f.stem for f in model_dir.glob("*.yaml")]
+    return sorted(models)
+
+
+def load_model_config(model_name: str, base_cfg: DictConfig) -> DictConfig:
+    """Load model-specific config and merge with base config"""
+    model_cfg_path = Path(f"conf/model/{model_name}.yaml")
+    
+    if not model_cfg_path.exists():
+        raise FileNotFoundError(f"Model config not found: {model_cfg_path}")
+    
+    with open(model_cfg_path) as f:
+        model_cfg = OmegaConf.load(f)
+    
+    # Create a mutable copy of base config
+    cfg = OmegaConf.to_container(base_cfg, resolve=True)
+    cfg = OmegaConf.create(cfg)
+    OmegaConf.set_struct(cfg, False)
+    
+    # Merge model config
+    cfg = OmegaConf.merge(cfg, model_cfg)
+    
+    return cfg
+
+
+def run_inference_for_model(
+    model_name: str,
+    cfg: DictConfig,
+    dataset: List[dict],
+    results_dir: Path
+) -> str:
+    """Run inference for a single model and return results path"""
+    
+    logger.info(f"\n{'='*70}")
+    logger.info(f"Running inference for model: {model_name}")
+    logger.info(f"{'='*70}")
+    
+    # Load model-specific config
+    model_cfg = load_model_config(model_name, cfg)
+
+    logger.info(model_cfg)
+    logger.info(f"Model: {model_cfg.model.name}")
+    logger.info(f"Max model len: {model_cfg.inference.max_model_len}")
+    logger.info(f"Temperature: {model_cfg.inference.sampling.temperature}")
+    
+    # Filter dataset by rule counts and patterns
+    rule_counts_to_test = (
+        model_cfg.experiment.rule_counts
+        if model_cfg.experiment.rule_counts is not None
+        else model_cfg.word_data_generator.rule_counts
+    )
+    patterns_to_test = (
+        model_cfg.experiment.patterns
+        if model_cfg.experiment.patterns is not None
+        else model_cfg.word_data_generator.patterns
+    )
+    
+    filtered_dataset = [
+        case for case in dataset 
+        if case['count'] in rule_counts_to_test
+        and case.get('pattern') in patterns_to_test
+    ]
+
+    # Load strategy
+    strategy = get_strategy(cfg.strategy.name, model_name=model_cfg.model.name)
+    logger.info(f"Strategy: {cfg.strategy.name}")
+    
+    logger.info(f"Testing rule counts: {rule_counts_to_test}")
+    logger.info(f"Testing patterns: {patterns_to_test}")
+    prompts = [strategy.build_prompt(case['words']) for case in filtered_dataset]
+    logger.info(f"Filtered to {len(filtered_dataset)} samples for testing")
+    
+    # Initialize vLLM
+    logger.info("Initializing vLLM...")
+    llm = LLM(
+        model=model_cfg.model.name,
+        max_model_len=model_cfg.inference.max_model_len,
+        trust_remote_code=model_cfg.inference.trust_remote_code,
+        gpu_memory_utilization=0.85,
+    )
+    
+    sampling_params = SamplingParams(
+        temperature=model_cfg.inference.sampling.temperature,
+        top_p=model_cfg.inference.sampling.top_p,
+        max_tokens=model_cfg.inference.sampling.max_tokens
+    )
+    
+    # Generate outputs
+    logger.info("Generating outputs...")
+    outputs = llm.generate(prompts, sampling_params)
+
+    del llm
+    gc.collect()
+    destroy_model_parallel()
+    torch.cuda.empty_cache()
+    
+    # Evaluate & save results
+    results = []
+    for i, output in enumerate(outputs):
+        case = filtered_dataset[i]
+        generated_text = output.outputs[0].text
+        stats = Evaluator.score_strict(case['words'], generated_text)
+        
+        results.append({
+            "id": case['id'],
+            "type": case['type'],
+            "pattern": case.get('pattern', 'unknown'),
+            "count": case['count'],
+            "strategy": cfg.strategy.name,
+            "model": model_name,
+            "model_name_full": model_cfg.model.name,
+            "score": stats['score'],
+            "passed_count": stats['passed_count'],
+            "total_count": stats['total_count'],
+            "missing_words": json.dumps(stats['missing_words']),
+            "followed_positions": json.dumps(stats['followed_positions']),
+            "unfollowed_positions": json.dumps(stats['unfollowed_positions']),
+            "word_details": json.dumps(stats['word_details']),
+            "generated_text": generated_text
+        })
+    
+    # Save results for this model
+    df = pd.DataFrame(results)
+    results_dir.mkdir(parents=True, exist_ok=True)
+    
+    results_path = results_dir / f"results_{cfg.strategy.name}_{model_name}.csv"
+    df.to_csv(results_path, index=False)
+    logger.info(f"Saved {len(results)} results to {results_path}")
+    
+    return str(results_path)
+
+
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
+def main(cfg: DictConfig):
+    """Run inference on multiple models"""
+    
+    # Check device availability
+    if not torch.cuda.is_available():
+        logger.warning("CUDA GPU not available. vLLM may be very slow on CPU.")
+    
+    # Determine which models to test
+    available_models = get_available_models()
+    
+    if cfg.experiment.models is None:
+        models_to_test = available_models
+    else:
+        models_to_test = cfg.experiment.models
+    
+    logger.info(f"Available models: {available_models}")
+    logger.info(f"Testing models: {models_to_test}")
+    
+    # Load dataset once
+    dataset = load_dataset(cfg.word_data_generator.dataset_path)
+    logger.info(f"Loaded {len(dataset)} samples")
+    
+    # Results directory
+    results_dir = Path(cfg.experiment.results_dir)
+    
+    # Run inference for each model
+    results_files = []
+    for model_name in models_to_test:
+        try:
+            results_file = run_inference_for_model(
+                model_name,
+                cfg,
+                dataset,
+                results_dir
+            )
+            results_files.append(results_file)
+        except Exception as e:
+            logger.error(f"Failed to run inference for model {model_name}: {e}")
+            continue
+    
+    # Summary
+    logger.info(f"\n{'='*70}")
+    logger.info(f"EXPERIMENT COMPLETE")
+    logger.info(f"{'='*70}")
+    logger.info(f"Models tested: {len(results_files)}/{len(models_to_test)}")
+    logger.info(f"Results saved to:")
+    for rf in results_files:
+        logger.info(f"  - {rf}")
+
+
+if __name__ == "__main__":
+    main()
+
+
+================================================
+File: src/__init__.py
+================================================
+
+
+
+================================================
+File: src/evaluator.py
+================================================
+from typing import List, Dict, Optional
+import re
+
+class Evaluator:
+    @staticmethod
+    def score_strict(required_words: List[str], generated_text: str) -> Dict:
+        """
+        Strict exact-match scoring with position tracking.
+        Returns a dict containing the score and detailed stats.
+        """
+        text_lower = generated_text.lower()
+        
+        # Track each word's status
+        word_details = []
+        for idx, word in enumerate(required_words):
+            word_lower = word.lower()
+            # Find all occurrences
+            matches = [m.start() for m in re.finditer(re.escape(word_lower), text_lower)]
+            
+            word_details.append({
+                "position": idx,  # Position in the rule list (0-indexed)
+                "word": word,
+                "found": len(matches) > 0,
+                "occurrences": len(matches),
+                "positions_in_text": matches  # Character positions in generated text
+            })
+        
+        # Calculate aggregate stats
+        passed_words = [wd for wd in word_details if wd["found"]]
+        passed_count = len(passed_words)
+        total_count = len(required_words)
+        score = passed_count / total_count if total_count > 0 else 0.0
+        
+        return {
+            "score": score,
+            "passed_count": passed_count,
+            "total_count": total_count,
+            "missing_words": [wd["word"] for wd in word_details if not wd["found"]],
+            "word_details": word_details,  # Full per-word breakdown
+            # Aggregated position info
+            "followed_positions": [wd["position"] for wd in word_details if wd["found"]],
+            "unfollowed_positions": [wd["position"] for wd in word_details if not wd["found"]]
+        }
+
+
+================================================
+File: src/generators.py
+================================================
+import random
+import json
+import logging
+import os
+import nltk
+from nltk.corpus import wordnet as wn
+from typing import List, Dict, Optional, Tuple
+import re
+
+logger = logging.getLogger(__name__)
+
+class WordDataGenerator:
+    def __init__(self, alphanumeric_only: bool = False, seeds: Optional[List[str]] = None):
+        self.alphanumeric_only = alphanumeric_only
+        self.seeds = seeds or ["food.n.02", "artifact.n.01"]
+        self._ensure_nltk()
+        # Filter for valid alpha words > 3 chars, and optionally alphanumeric
+        self.all_words = list(
+            set(
+                w for w in wn.words()
+                if w.isalpha() and len(w) > 3 and (not alphanumeric_only or w.isalnum())
+            )
+        )
+        logger.info(
+            f"Initialized Generator with {len(self.all_words)} words. "
+            f"Alphanumeric only: {self.alphanumeric_only}, Seeds: {self.seeds}"
+        )
+
+    def _ensure_nltk(self):
+        try:
+            nltk.data.find('corpora/wordnet')
+        except LookupError:
+            logger.info("Downloading WordNet...")
+            try:
+                nltk.download('wordnet')
+                nltk.download('omw-1.4')
+            except Exception as e:
+                logger.error(f"Failed to download NLTK data: {e}")
+                raise
+
+    def parse_pattern(self, pattern: str) -> Tuple[str, List[str]]:
+        """
+        Parse a pattern string to determine mode and components.
+        
+        Returns:
+            Tuple of (mode, components) where mode is 'repeating' or 'blocked'
+            
+        Examples:
+            'cr' -> ('repeating', ['c', 'r'])
+            'c|r|c' -> ('blocked', ['c', 'r', 'c'])
+            'c1c2' -> ('repeating', ['c1', 'c2'])
+            'c1|c2' -> ('blocked', ['c1', 'c2'])
+        """
+        if '|' in pattern:
+            return ('blocked', pattern.split('|'))
+        else:
+            # Parse repeating pattern with optional numbers
+            components = re.findall(r'[cr]\d*', pattern)
+            return ('repeating', components)
+
+    def get_words_for_component(self, component: str, n: int) -> Tuple[List[str], Dict]:
+        """
+        Get words for a specific component (e.g., 'c', 'r', 'c1', 'c2').
+        
+        Args:
+            component: Component identifier ('c', 'r', 'c1', 'c2', etc.)
+            n: Number of words needed
+            
+        Returns:
+            Tuple of (words, metadata)
+        """
+        if component == 'r':
+            # Random words
+            words = self.get_chaotic_list(n)
+            metadata = {
+                "type": "random",
+                "count": n
+            }
+            return words, metadata
+        elif component.startswith('c'):
+            # Coherent words, possibly with seed index
+            seed_idx = int(component[1:]) if len(component) > 1 else None
+            
+            if seed_idx is not None and seed_idx < len(self.seeds):
+                # Use specific seed
+                seeds = [self.seeds[seed_idx]]
+            else:
+                # Use all seeds
+                seeds = self.seeds
+                
+            words, metadata = self.get_coherent_list(n, seeds=seeds)
+            return words, metadata
+        else:
+            raise ValueError(f"Unknown component: {component}")
+
+    def get_coherent_list(self, n: int, seeds: Optional[List[str]] = None) -> Tuple[List[str], Dict]:
+        """Generates semantically related words using seeds in order, with random sampling.
+    
+        Args:
+            n: Number of words to generate
+            seeds: Optional list of seeds to use (defaults to self.seeds)
+    
+        Returns:
+            Tuple of (word_list, metadata) where metadata contains seed contribution info.
+        """
+        seeds = seeds or self.seeds
+        pool = []
+        needed = n
+        seed_contributions = []
+        
+        for seed in seeds:
+            if needed <= 0:
+                break
+                
+            try:
+                seed_synset = wn.synset(seed)
+            except Exception as e:
+                logger.warning(f"Seed synset '{seed}' not found: {e}")
+                continue
+                
+            words = {w.replace('_', ' ') for s in seed_synset.closure(lambda s: s.hyponyms()) for w in s.lemma_names()}
+            words = [w for w in words if '_' not in w]
+            if self.alphanumeric_only:
+                words = [w for w in words if w.isalnum()]
+        
+            # Remove duplicates already in pool
+            words = [w for w in words if w not in pool]
+            
+            # Shuffle to add randomness
+            random.shuffle(words)
+            
+            # Take only what we need from this seed
+            to_take = min(needed, len(words))
+            pool.extend(words[:to_take])
+            
+            # Track contribution
+            seed_contributions.append({
+                "seed": seed,
+                "words_contributed": to_take,
+                "words_available": len(words)
+            })
+            
+            needed -= to_take
+    
+        if needed > 0:
+            logger.error(f"Could not generate {n} coherent words. Only {n - needed} words available from seeds.")
+            raise ValueError(f"Insufficient coherent words available. Requested {n}, got {n - needed}")
+    
+        metadata = {
+            "total_requested": n,
+            "total_generated": len(pool),
+            "seed_contributions": seed_contributions,
+            "seeds_used": [sc["seed"] for sc in seed_contributions]
+        }
+    
+        return pool, metadata
+
+    def get_chaotic_list(self, n: int) -> List[str]:
+        available_words = self.all_words
+        if self.alphanumeric_only:
+            available_words = [w for w in available_words if w.isalnum()]
+        if n > len(available_words):
+            logger.error(f"Requested {n} words, but only {len(available_words)} available.")
+            raise ValueError(f"Insufficient words available. Requested {n}, got {len(available_words)}")
+        return random.sample(available_words, n)
+
+    def get_mixed_list(self, n: int, pattern: str) -> Tuple[List[str], Dict]:
+        """
+        Generate a mixed word list based on a pattern.
+        
+        Args:
+            n: Total number of words
+            pattern: Pattern string (e.g., 'cr', 'c|r|c', 'c1c2', 'cccr')
+            
+        Returns:
+            Tuple of (word_list, metadata)
+            
+        Examples:
+            get_mixed_list(12, 'cr') -> c,r,c,r,c,r,c,r,c,r,c,r (alternating, different words)
+            get_mixed_list(12, 'c|r|c') -> [4 coherent], [4 random], [4 coherent] (blocks)
+            get_mixed_list(12, 'cccr') -> c,c,c,r,c,c,c,r,c,c,c,r (3:1 pulse)
+        """
+        mode, components = self.parse_pattern(pattern)
+        
+        # First, determine how many words we need from each component type
+        component_counts = {}
+        
+        if mode == 'repeating':
+            # Count how many times each component appears in the full sequence
+            pattern_length = len(components)
+            for i in range(n):
+                component = components[i % pattern_length]
+                component_counts[component] = component_counts.get(component, 0) + 1
+                
+        else:  # blocked mode
+            # Split n into equal blocks
+            num_blocks = len(components)
+            block_size = n // num_blocks
+            remainder = n % num_blocks
+            
+            for idx, component in enumerate(components):
+                # Distribute remainder across first blocks
+                current_block_size = block_size + (1 if idx < remainder else 0)
+                component_counts[component] = component_counts.get(component, 0) + current_block_size
+        
+        # Now fetch all words needed for each component type
+        component_pools = {}
+        component_metadata = {}
+        
+        for component, count in component_counts.items():
+            words, metadata = self.get_words_for_component(component, count)
+            component_pools[component] = words
+            component_metadata[component] = metadata
+        
+        # Build the final sequence according to the pattern
+        result = []
+        component_indices = {comp: 0 for comp in component_pools}
+        position_details = []
+        
+        if mode == 'repeating':
+            # Cycle through components, taking one word at a time
+            pattern_length = len(components)
+            for i in range(n):
+                component = components[i % pattern_length]
+                idx = component_indices[component]
+                word = component_pools[component][idx]
+                result.append(word)
+                
+                position_details.append({
+                    "position": i,
+                    "component": component,
+                    "word": word
+                })
+                
+                component_indices[component] += 1
+            
+            final_metadata = {
+                "pattern": pattern,
+                "mode": "repeating",
+                "total_words": n,
+                "component_counts": component_counts,
+                "position_details": position_details
+            }
+            
+        else:  # blocked mode
+            # Add words block by block
+            block_metadata = []
+            num_blocks = len(components)
+            block_size = n // num_blocks
+            remainder = n % num_blocks
+            
+            for idx, component in enumerate(components):
+                current_block_size = block_size + (1 if idx < remainder else 0)
+                start_pos = len(result)
+                
+                # Take the next chunk from this component's pool
+                comp_idx = component_indices[component]
+                block_words = component_pools[component][comp_idx:comp_idx + current_block_size]
+                result.extend(block_words)
+                component_indices[component] += current_block_size
+                
+                block_metadata.append({
+                    "block_index": idx,
+                    "component": component,
+                    "start_position": start_pos,
+                    "end_position": len(result),
+                    "size": current_block_size,
+                    "words": block_words
+                })
+            
+            final_metadata = {
+                "pattern": pattern,
+                "mode": "blocked",
+                "total_words": n,
+                "component_counts": component_counts,
+                "blocks": block_metadata
+            }
+        
+        return result, final_metadata
+
+    def generate_dataset(self, rule_counts: List[int], trials: int, patterns: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Creates a standardized dataset for experimentation.
+        
+        Args:
+            rule_counts: List of word counts to test
+            trials: Number of trials per count
+            patterns: Optional list of mixing patterns to include (e.g., ['c', 'r', 'cr', 'c|r|c'])
+        """
+        patterns = patterns or ['c', 'r']  # Default: pure coherent and pure random
+        dataset = []
+        
+        for count in rule_counts:
+            for trial_idx in range(trials):
+                for pattern in patterns:
+                    words, metadata = self.get_mixed_list(count, pattern)
+                    
+                    # Determine type label
+                    if pattern == 'c':
+                        type_label = 'coherent'
+                    elif pattern == 'r':
+                        type_label = 'chaotic'
+                    else:
+                        type_label = f'mixed_{pattern}'
+                    
+                    dataset.append({
+                        "id": f"{type_label}_{count}_{trial_idx}_{random.randint(1000,9999)}",
+                        "type": type_label,
+                        "pattern": pattern,
+                        "count": count,
+                        "words": words,
+                        "metadata": metadata
+                    })
+        
+        return dataset
+
+    def save_dataset(self, dataset: List[Dict], filepath: str):
+        """Saves the dataset to a JSON file, ensuring the directory exists."""
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w') as f:
+            json.dump(dataset, f, indent=2)
+        logger.info(f"Dataset saved to {filepath}")
+
+
+================================================
+File: src/runner.py
+================================================
+
+
+
+================================================
+File: src/strategies.py
+================================================
+from abc import ABC, abstractmethod
+from typing import List, Optional
+from transformers import AutoTokenizer
+
+class PromptStrategy(ABC):
+    """Abstract base class for prompting strategies."""
+    
+    def __init__(self, model_name: str):
+        """Initialize with model name to load correct tokenizer."""
+        self.model_name = model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    
+    @abstractmethod
+    def build_prompt(self, words: List[str]) -> str:
+        pass
+    
+    def format_with_chat_template(self, messages: List[dict]) -> str:
+        """Use model's official chat template"""
+        return self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+
+
+class StandardStoryStrategy(PromptStrategy):
+    """Baseline: Ask for a story with the words using proper chat format."""
+
+    def build_prompt(self, words: List[str]) -> str:
+        system_msg = "You are a helpful assistant capable of following complex constraints."
+        
+        user_msg = f"""Write a detailed story that explicitly includes the following {len(words)} words. 
+You must ensure EVERY word from the list appears in the story exactly as written.
+
+LIST OF REQUIRED WORDS:
+{', '.join(words)}"""
+        
+        messages = [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": user_msg}
+        ]
+        
+        return self.format_with_chat_template(messages)
+
+
+class IndexedListStrategy(PromptStrategy):
+    """Experimental: Asks model to print the word number next to usage."""
+    
+    def build_prompt(self, words: List[str]) -> str:
+        numbered_list = "\n".join([f"{i+1}. {word}" for i, word in enumerate(words)])
+        
+        user_msg = f"""Write a story using these words. 
+Whenever you use a word from the list, put its number in brackets, like: apple [1].
+
+WORDS:
+{numbered_list}"""
+        
+        messages = [
+            {"role": "user", "content": user_msg}
+        ]
+        
+        return self.format_with_chat_template(messages)
+
+
+================================================
+File: src/utils.py
+================================================
+from src.strategies import StandardStoryStrategy, IndexedListStrategy
+
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def get_strategy(strategy_name: str, model_name: str):
+    """Load strategy with model-specific chat template."""
+    strategies = {
+        "Standard_Story": StandardStoryStrategy,
+        "Indexed_List": IndexedListStrategy,
+    }
+
+    if strategy_name not in strategies:
+        raise ValueError(f"Unknown strategy: {strategy_name}. Available: {list(strategies.keys())}")
+
+    strategy_class = strategies[strategy_name]
+    return strategy_class(model_name=model_name)
+
+
+def load_dataset(dataset_path: str) -> list:
+    """Load dataset from JSON file."""
+    try:
+        with open(dataset_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        logger.error(f"Dataset not found at {dataset_path}. Run generate_data.py first!")
+        raise
+
+
+================================================
+File: src/analysis/__init__.py
+================================================
+from .visualizations import ResultsVisualizer
+from .position_analysis import analyze_positions
+from .statistics import generate_summary_statistics
+
+__all__ = [
+    'ResultsVisualizer',
+    'analyze_positions',
+    'generate_summary_statistics'
+]
+
+
+================================================
+File: src/analysis/comparison.py
+================================================
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from pathlib import Path
+from typing import Dict
+
+class MultiModelComparison:
+    """Compare results across multiple models"""
+
+    def __init__(self, results_dir: str):
+        self.results_dir = Path(results_dir)
+        self.all_results = self._load_all_results()
+
+        if len(self.all_results) == 0:
+            raise FileNotFoundError(f"No results CSV files found in {results_dir}")
+
+        self._expand_word_details()
+        self._setup_color_scheme()
+
+    def _load_all_results(self) -> pd.DataFrame:
+        csv_files = list(self.results_dir.glob("results_*.csv"))
+        if not csv_files:
+            raise FileNotFoundError(f"No results_*.csv files found in {self.results_dir}")
+
+        dfs = []
+        for csv_file in csv_files:
+            df = pd.read_csv(csv_file)
+            df['model'] = df['model_name_full'].apply(lambda x: x.split('/')[-1].lower().replace('instruct','it'))
+            dfs.append(df)
+
+        combined = pd.concat(dfs, ignore_index=True)
+        print(f" Loaded {len(csv_files)} result files, {len(combined)} total samples")
+        print(f"   Models: {sorted(combined['model'].unique())}")
+
+        return combined
+
+    def _expand_word_details(self):
+        import json
+        expanded_rows = []
+
+        for _, row in self.all_results.iterrows():
+            trial_id = int(row['id'].split('_')[-2])
+            config_id = '_'.join(row['id'].split('_')[:-2])
+
+            word_details = json.loads(row['word_details'])
+            for wd in word_details:
+                expanded_rows.append({
+                    'model': row['model'],
+                    'pattern': row['pattern'],
+                    'count': row['count'],
+                    'score': row['score'],
+                    'position_in_rule': wd['position'],
+                    'word': wd['word'],
+                    'found': wd['found'],
+                    'positions_in_text': wd['positions_in_text'],
+                    'occurrences': wd['occurrences'],
+                    'sample_id': row['id'],
+                    'trial_id': trial_id,
+                    'config_id': config_id
+                })
+
+        self.expanded_df = pd.DataFrame(expanded_rows)
+
+    def _setup_color_scheme(self):
+        models = sorted(self.all_results['model'].unique())
+        if len(models) <= 10:
+            colors = plt.cm.tab10(np.linspace(0, 1, 10))
+        elif len(models) <= 20:
+            colors = plt.cm.tab20(np.linspace(0, 1, 20))
+        else:
+            colors = plt.cm.hsv(np.linspace(0, 0.9, len(models)))
+
+        self.model_colors = {model: colors[i] for i, model in enumerate(models)}
+
+    def plot_model_comparison_comprehensive(self):
+        """Comprehensive model comparison"""
+        models = sorted(self.all_results['model'].unique())
+        if len(models) <= 1:
+            print(" Only one model found, skipping comparison")
+            return
+
+        counts = sorted(self.expanded_df['count'].unique())
+        
+        # Create individual plots per rule count
+        for count in counts:
+            count_data = self.expanded_df[self.expanded_df['count'] == count]
+            
+            # Create subdirectory for this count
+            count_dir = self.results_dir / f"comparison_{count}_rules"
+            count_dir.mkdir(parents=True, exist_ok=True)
+            
+            print(f"\n📊 Generating comparisons for {count} rules...")
+            
+            # 1. Pattern comparison (bar chart)
+            fig, ax = plt.subplots(figsize=(12, 6))
+            self._plot_model_pattern_comparison(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "01_pattern_comparison.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Pattern comparison")
+            
+            # 2. Pattern heatmap
+            fig, ax = plt.subplots(figsize=(10, 6))
+            self._plot_model_by_pattern_heatmap(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "02_pattern_heatmap.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Pattern heatmap")
+            
+            # 3. Position-based follow rate
+            fig, ax = plt.subplots(figsize=(14, 6))
+            self._plot_model_position_comparison(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "03_position_comparison.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Position comparison")
+            
+            # 4. Primacy/Recency effect
+            fig, ax = plt.subplots(figsize=(10, 6))
+            self._plot_model_primacy_recency(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "04_primacy_recency.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Primacy/recency")
+            
+            # 5. Coherent vs Random
+            fig, ax = plt.subplots(figsize=(10, 6))
+            self._plot_model_coherent_vs_random(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "05_coherent_vs_random.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Coherent vs random")
+            
+            # 6. Summary table
+            fig, ax = plt.subplots(figsize=(10, 6))
+            self._plot_model_summary_table(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "06_summary_table.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Summary table")
+            
+            print(f"📁 Saved to: {count_dir}")
+        
+        # Also create cross-count comparison
+        print(f"\n📊 Generating cross-count comparisons...")
+        self._plot_rule_length_comparison_all()
+        print(f"✅ All model comparisons complete!")
+
+    def _plot_model_pattern_comparison(self, ax, data):
+        """Compare models across patterns for SPECIFIC rule count"""
+        models = sorted(data['model'].unique())
+        patterns = sorted(data['pattern'].unique())
+        
+        model_pattern_scores = (
+            data
+                .groupby(['model', 'pattern'])['found']
+                .agg(mean='mean', sem='sem')
+                .reset_index()
+        )
+
+        x = np.arange(len(patterns))
+        width = 0.8 / len(models)
+
+        for idx, model in enumerate(models):
+            model_data = model_pattern_scores[model_pattern_scores['model'] == model]
+            model_data = model_data.set_index('pattern').reindex(patterns).reset_index()
+
+            offset = (idx - len(models)/2 + 0.5) * width
+            color = self.model_colors[model]
+
+            ax.bar(
+                x + offset, model_data['mean'], width,
+                label=model, alpha=0.8,
+                yerr=1.96 * model_data['sem'], capsize=3,
+                color=color
+            )
+
+        ax.set_xlabel("Pattern Type", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Performance by Pattern (with 95% CI)", fontsize=12, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(patterns, rotation=45, ha='right')
+        ax.legend(title="Model", loc='best', fontsize=9)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+
+    def _plot_model_by_pattern_heatmap(self, ax, data):
+        """Heatmap: models vs patterns for specific count"""
+        pivot = data.groupby(['model', 'pattern'])['found'].mean().unstack()
+        
+        sns.heatmap(
+            pivot,
+            cmap='RdYlGn',
+            annot=True,
+            fmt='.2f',
+            cbar_kws={'label': 'Follow Rate'},
+            ax=ax,
+            vmin=0,
+            vmax=1
+        )
+        ax.set_xlabel("Pattern", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Model", fontsize=11, fontweight='bold')
+        ax.set_title("Model × Pattern Heatmap", fontsize=12, fontweight='bold')
+
+    def _plot_model_position_comparison(self, ax, data):
+        """Position comparison for specific rule count"""
+        models = sorted(data['model'].unique())
+
+        for model in models:
+            model_data = data[data['model'] == model].copy()
+
+            max_pos = model_data['position_in_rule'].max()
+            model_data['position_pct'] = (model_data['position_in_rule'] / max_pos * 100).astype(int)
+
+            position_stats = model_data.groupby(['position_pct', 'trial_id'])['found'].mean().reset_index()
+
+            position_agg = (
+                position_stats
+                    .groupby('position_pct')['found']
+                    .agg(mean='mean', sem='sem')
+                    .reset_index()
+            )
+
+            step = max(1, len(position_agg) // 20)
+            plot_data = position_agg.iloc[::step]
+
+            color = self.model_colors[model]
+            ax.plot(
+                plot_data['position_pct'], plot_data['mean'],
+                marker='o', linewidth=2, markersize=4,
+                label=model, color=color, alpha=0.8
+            )
+
+        ax.set_xlabel("Position in Rule (%)", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Position-Based Follow Rate (Normalized)", fontsize=12, fontweight='bold')
+        ax.legend(title="Model", loc='best', fontsize=9)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(True, alpha=0.3)
+
+    def _plot_model_primacy_recency(self, ax, data):
+        """Primacy/recency for specific count"""
+        data = data.copy()
+        data['position_quintile'] = pd.qcut(
+            data['position_in_rule'], 
+            q=5, 
+            duplicates='drop', 
+            labels=['1st', '2nd', '3rd', '4th', '5th']
+        )
+        
+        model_quintile = data.groupby(['model', 'position_quintile'], observed=True)['found'].mean().unstack()
+        
+        model_quintile.plot(kind='bar', ax=ax, alpha=0.8, width=0.8)
+        ax.set_xlabel("Model", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Primacy/Recency Effect", fontsize=12, fontweight='bold')
+        ax.set_ylim(0, 1.0)
+        ax.legend(title='Position', fontsize=8, ncol=2)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+
+    def _plot_model_coherent_vs_random(self, ax, data):
+        """Coherent vs random for specific count"""
+        def classify_pattern(pattern):
+            if pattern == 'c' or (pattern.startswith('c') and 'r' not in pattern):
+                return 'Coherent'
+            elif pattern == 'r' or (pattern.startswith('r') and 'c' not in pattern):
+                return 'Random'
+            else:
+                return 'Mixed'
+
+        data = data.copy()
+        data['pattern_type'] = data['pattern'].apply(classify_pattern)
+
+        model_type_scores = (
+            data
+                .groupby(['model', 'pattern_type'])['found']
+                .agg(mean='mean', sem='sem')
+                .reset_index()
+        )
+
+        models = sorted(model_type_scores['model'].unique())
+        pattern_types = ['Coherent', 'Random', 'Mixed']
+
+        x = np.arange(len(models))
+        width = 0.25
+
+        colors = {'Coherent': '#2ca02c', 'Random': '#d62728', 'Mixed': '#ff7f0e'}
+
+        for idx, ptype in enumerate(pattern_types):
+            type_data = model_type_scores[model_type_scores['pattern_type'] == ptype]
+            type_data = type_data.set_index('model').reindex(models).reset_index()
+
+            offset = (idx - 1) * width
+            ax.bar(
+                x + offset, type_data['mean'], width,
+                label=ptype, alpha=0.8,
+                yerr=1.96 * type_data['sem'], capsize=3,
+                color=colors.get(ptype, 'gray')
+            )
+
+        ax.set_xlabel("Model", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+        ax.set_title("Coherent vs Random", fontsize=12, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(models, rotation=45, ha='right')
+        ax.legend(title="Pattern Type", fontsize=8)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(axis='y', alpha=0.3)
+
+    def _plot_model_summary_table(self, ax, data):
+        """Summary table for specific count"""
+        ax.axis('off')
+
+        summary_stats = []
+        for model in sorted(data['model'].unique()):
+            model_data = data[data['model'] == model]
+
+            overall_mean = model_data['found'].mean()
+
+            pattern_means = model_data.groupby('pattern')['found'].mean()
+            best_pattern = pattern_means.idxmax()
+            best_score = pattern_means.max()
+
+            worst_pattern = pattern_means.idxmin()
+            worst_score = pattern_means.min()
+
+            summary_stats.append([
+                model[:20],
+                f'{overall_mean:.1%}',
+                f'{best_pattern}\n({best_score:.1%})',
+                f'{worst_pattern}\n({worst_score:.1%})'
+            ])
+
+        table = ax.table(
+            cellText=summary_stats,
+            colLabels=['Model', 'Overall', 'Best Pattern', 'Worst Pattern'],
+            cellLoc='center',
+            loc='center',
+            bbox=[0, 0, 1, 1]
+        )
+
+        table.auto_set_font_size(False)
+        table.set_fontsize(9)
+        table.scale(1, 2)
+
+        for i in range(4):
+            table[(0, i)].set_facecolor('#4CAF50')
+            table[(0, i)].set_text_props(weight='bold', color='white')
+
+        for i in range(1, len(summary_stats) + 1):
+            for j in range(4):
+                if i % 2 == 0:
+                    table[(i, j)].set_facecolor('#f0f0f0')
+
+        ax.set_title("Summary Statistics", fontsize=12, fontweight='bold', pad=20)
+
+    def _plot_rule_length_comparison_all(self):
+        """NEW: Dedicated plot showing how models scale with rule length"""
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        
+        # Left: Overall scaling
+        ax1 = axes[0]
+        model_count_scores = (
+            self.expanded_df
+                .groupby(['model', 'count'])['found']
+                .agg(mean='mean', sem='sem')
+                .reset_index()
+        )
+
+        models = sorted(model_count_scores['model'].unique())
+
+        for model in models:
+            model_data = model_count_scores[model_count_scores['model'] == model].sort_values('count')
+            color = self.model_colors[model]
+
+            ax1.plot(
+                model_data['count'], model_data['mean'],
+                marker='o', linewidth=2, markersize=8,
+                label=model, color=color, alpha=0.8
+            )
+
+            ax1.fill_between(
+                model_data['count'],
+                model_data['mean'] - 1.96 * model_data['sem'],
+                model_data['mean'] + 1.96 * model_data['sem'],
+                alpha=0.2, color=color
+            )
+
+        ax1.set_xlabel("Number of Rules", fontsize=12, fontweight='bold')
+        ax1.set_ylabel("Overall Follow Rate", fontsize=12, fontweight='bold')
+        ax1.set_title("Scaling with Number of Rules (All Patterns)", fontsize=13, fontweight='bold')
+        ax1.legend(title="Model", fontsize=9)
+        ax1.set_ylim(0, 1.0)
+        ax1.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax1.grid(True, alpha=0.3)
+        
+        # Right: Pattern-specific scaling (coherent vs random)
+        ax2 = axes[1]
+        
+        def classify_pattern(pattern):
+            if pattern in ['c', 'r']:
+                return pattern
+            return 'mixed'
+        
+        scaling_data = self.expanded_df.copy()
+        scaling_data['pattern_class'] = scaling_data['pattern'].apply(classify_pattern)
+        scaling_data = scaling_data[scaling_data['pattern_class'].isin(['c', 'r'])]
+        
+        for model in models:
+            for pclass, pstyle in [('c', '-'), ('r', '--')]:
+                model_pattern_data = scaling_data[
+                    (scaling_data['model'] == model) & 
+                    (scaling_data['pattern_class'] == pclass)
+                ]
+                
+                if len(model_pattern_data) == 0:
+                    continue
+                
+                count_stats = (
+                    model_pattern_data
+                        .groupby('count')['found']
+                        .agg(mean='mean', sem='sem')
+                        .reset_index()
+                        .sort_values('count')
+                )
+                
+                color = self.model_colors[model]
+                label = f"{model} ({'coherent' if pclass == 'c' else 'random'})"
+                
+                ax2.plot(
+                    count_stats['count'], count_stats['mean'],
+                    marker='o', linewidth=2, markersize=6,
+                    linestyle=pstyle, label=label, color=color, alpha=0.8
+                )
+        
+        ax2.set_xlabel("Rule Length (words)", fontsize=12, fontweight='bold')
+        ax2.set_ylabel("Follow Rate", fontsize=12, fontweight='bold')
+        ax2.set_title("Scaling: Coherent vs Random", fontsize=13, fontweight='bold')
+        ax2.legend(fontsize=8, ncol=2)
+        ax2.set_ylim(0, 1.0)
+        ax2.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(self.results_dir / "model_comparison_rule_length_scaling.png", 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+        print("✅ Rule length scaling comparison saved")
+
+    def get_summary(self) -> str:
+        summary = ["=" * 60, "MODEL COMPARISON SUMMARY", "=" * 60, ""]
+
+        for model in sorted(self.all_results['model'].unique()):
+            model_data = self.all_results[self.all_results['model'] == model]
+            model_expanded = self.expanded_df[self.expanded_df['model'] == model]
+
+            mean_score = model_data['score'].mean()
+            std_score = model_data['score'].std()
+            n_samples = len(model_data)
+
+            summary.append(f"{model}:")
+            summary.append(f"  Mean score: {mean_score:.2%} (±{std_score:.4f})")
+            summary.append(f"  Samples: {n_samples}")
+            summary.append("")
+
+        return "\n".join(summary)
+
+    def plot_model_comparison(self):
+        self.plot_model_comparison_comprehensive()
+
+
+
+================================================
+File: src/analysis/position_analysis.py
+================================================
+import pandas as pd
+import json
+import numpy as np
+from typing import Dict
+
+def analyze_positions(results_csv: str) -> Dict:
+    """
+    Analyze position-based patterns in rule following.
+    
+    Returns:
+        Dictionary containing various position analysis metrics
+    """
+    df = pd.read_csv(results_csv)
+    
+    # Expand word details
+    expanded_rows = []
+    for _, row in df.iterrows():
+        word_details = json.loads(row['word_details'])
+        for wd in word_details:
+            expanded_rows.append({
+                'pattern': row['pattern'],
+                'count': row['count'],
+                'position_in_rule': wd['position'],
+                'word': wd['word'],
+                'found': wd['found'],
+                'positions_in_text': wd['positions_in_text'],
+                'occurrences': wd['occurrences'],
+                'sample_id': row['id']
+            })
+    
+    expanded_df = pd.DataFrame(expanded_rows)
+    
+    # 1. Primacy/Recency analysis
+    expanded_df['position_quintile'] = pd.qcut(
+        expanded_df['position_in_rule'], 
+        q=5, 
+        duplicates='drop', 
+        labels=['1st', '2nd', '3rd', '4th', '5th']
+    )
+    
+    primacy_recency = expanded_df.groupby('position_quintile')['found'].agg(['sum', 'count']).reset_index()
+    primacy_recency['follow_rate'] = primacy_recency['sum'] / primacy_recency['count']
+    
+    # 2. Position ordering analysis (rule position vs text position)
+    ordering_data = []
+    for pattern in expanded_df['pattern'].unique():
+        pattern_data = expanded_df[
+            (expanded_df['pattern'] == pattern) & 
+            (expanded_df['found'] == True) &
+            (expanded_df['occurrences'] > 0)
+        ].copy()
+        
+        if len(pattern_data) > 0:
+            pattern_data['first_pos_in_text'] = pattern_data['positions_in_text'].apply(lambda x: x[0] if x else -1)
+            pattern_data = pattern_data[pattern_data['first_pos_in_text'] >= 0]
+            
+            if len(pattern_data) > 2:
+                correlation = pattern_data['position_in_rule'].corr(pattern_data['first_pos_in_text'])
+                z = np.polyfit(pattern_data['position_in_rule'], pattern_data['first_pos_in_text'], 1)
+                
+                ordering_data.append({
+                    'pattern': pattern,
+                    'correlation': correlation,
+                    'slope': z[0],
+                    'intercept': z[1],
+                    'samples': len(pattern_data)
+                })
+    
+    ordering_df = pd.DataFrame(ordering_data)
+    
+    # 3. By-position analysis across all patterns
+    position_stats = expanded_df.groupby('position_in_rule').agg({
+        'found': ['sum', 'count', 'mean']
+    }).reset_index()
+    position_stats.columns = ['position_in_rule', 'followed', 'total', 'follow_rate']
+    
+    return {
+        'expanded_df': expanded_df,
+        'primacy_recency': primacy_recency,
+        'ordering': ordering_df,
+        'position_stats': position_stats
+    }
+
+
+def print_position_analysis_summary(analysis_results: Dict) -> str:
+    """Generate a text summary of position analysis"""
+    primacy_recency = analysis_results['primacy_recency']
+    ordering = analysis_results['ordering']
+    
+    summary = "\n" + "="*70 + "\nPOSITION ANALYSIS\n" + "="*70 + "\n"
+    
+    # Primacy/Recency
+    summary += "\nPrimacy & Recency Effect:\n"
+    for _, row in primacy_recency.iterrows():
+        summary += f"  {row['position_quintile']:5s} quintile: {row['follow_rate']:6.2%} follow rate\n"
+    
+    # Check for primacy bias
+    first_quintile = primacy_recency.iloc[0]['follow_rate']
+    last_quintile = primacy_recency.iloc[-1]['follow_rate']
+    if first_quintile > last_quintile + 0.1:
+        summary += f"\n  ⚠️  PRIMACY BIAS DETECTED: First {first_quintile:.2%} vs Last {last_quintile:.2%}\n"
+    elif last_quintile > first_quintile + 0.1:
+        summary += f"\n  ⚠️  RECENCY BIAS DETECTED: Last {last_quintile:.2%} vs First {first_quintile:.2%}\n"
+    else:
+        summary += f"\n  ✅ No strong primacy/recency bias detected\n"
+    
+    # Ordering analysis
+    summary += "\nWord Ordering Analysis (Rule Position vs Text Position):\n"
+    for _, row in ordering.iterrows():
+        summary += f"  {row['pattern']:15s}: correlation={row['correlation']:+.3f}, slope={row['slope']:+.2f}\n"
+        if row['correlation'] > 0.3:
+            summary += f"                   → Words appear in order (positive correlation)\n"
+        elif row['correlation'] < -0.3:
+            summary += f"                   → Words appear in reverse order (negative correlation)\n"
+        else:
+            summary += f"                   → Order is scrambled (weak correlation)\n"
+    
+    return summary
+
+
+================================================
+File: src/analysis/statistics.py
+================================================
+import pandas as pd
+import json
+import numpy as np
+from scipy import stats
+
+def generate_summary_statistics(results_csv: str, output_file: str = "data/results/analysis_summary.txt"):
+    """Generate statistical summary with proper trial aggregation"""
+    df = pd.read_csv(results_csv)
+    
+    # Extract trial number from ID (format: type_count_trial_random)
+    df['trial_id'] = df['id'].str.extract(r'_(\d+)_\d+$')[0].astype(int)
+    df['config_id'] = df['id'].str.extract(r'^(.+)_\d+_\d+$')[0]
+    
+    # Expand word details
+    expanded_rows = []
+    for _, row in df.iterrows():
+        word_details = json.loads(row['word_details'])
+        for wd in word_details:
+            expanded_rows.append({
+                'pattern': row['pattern'],
+                'count': row['count'],
+                'trial_id': row['trial_id'],
+                'config_id': row['config_id'],
+                'position_in_rule': wd['position'],
+                'found': wd['found'],
+                'occurrences': wd['occurrences']
+            })
+    
+    expanded_df = pd.DataFrame(expanded_rows)
+    
+    # Aggregate by configuration (pattern + count), averaging across trials
+    pattern_stats = df.groupby(['pattern', 'count']).agg({
+        'score': ['mean', 'std', 'sem', 'count'],  # sem = standard error of mean
+        'passed_count': ['mean', 'std'],
+        'total_count': 'first'
+    }).reset_index()
+    
+    # Flatten column names
+    pattern_stats.columns = ['_'.join(col).strip('_') for col in pattern_stats.columns]
+    
+    # Calculate 95% confidence intervals
+    pattern_stats['score_ci_lower'] = pattern_stats['score_mean'] - 1.96 * pattern_stats['score_sem']
+    pattern_stats['score_ci_upper'] = pattern_stats['score_mean'] + 1.96 * pattern_stats['score_sem']
+    
+    # Word-level aggregation across trials
+    word_level_stats = expanded_df.groupby(['pattern', 'count', 'position_in_rule']).agg({
+        'found': ['mean', 'std', 'sem', 'count']
+    }).reset_index()
+    word_level_stats.columns = ['_'.join(col).strip('_') for col in word_level_stats.columns]
+    
+    summary = f"""
+EXPERIMENT RESULTS SUMMARY (Research-Grade Analysis)
+{'='*70}
+
+Overall Statistics:
+  - Total samples: {len(df)}
+  - Unique configurations: {df['config_id'].nunique()}
+  - Trials per configuration: {df.groupby('config_id')['trial_id'].nunique().mean():.1f} (avg)
+  - Total words analyzed: {len(expanded_df)}
+  - Overall follow rate: {expanded_df['found'].mean():.2%} ± {expanded_df['found'].sem():.4f}
+  - Mean score: {df['score'].mean():.2%} ± {df['score'].sem():.4f}
+
+By Pattern (with 95% Confidence Intervals):
+"""
+    
+    for pattern in sorted(pattern_stats['pattern'].unique()):
+        pattern_data = pattern_stats[pattern_stats['pattern'] == pattern]
+        
+        for _, row in pattern_data.iterrows():
+            n_trials = int(row['score_count'])
+            mean_score = row['score_mean']
+            ci_lower = row['score_ci_lower']
+            ci_upper = row['score_ci_upper']
+            
+            summary += f"\n  {pattern:15s} (n={row['count']:.0f} words, trials={n_trials}):"
+            summary += f"\n    Score: {mean_score:.2%} [95% CI: {ci_lower:.2%} - {ci_upper:.2%}]"
+            summary += f"\n    Std Dev: {row['score_std']:.4f}"
+    
+    # Statistical tests
+    summary += f"\n\n{'='*70}\nStatistical Tests:\n{'='*70}\n"
+    
+    # ANOVA: Does pattern type affect performance?
+    patterns = df['pattern'].unique()
+    if len(patterns) > 2:
+        pattern_groups = [df[df['pattern'] == p]['score'].values for p in patterns]
+        f_stat, p_value = stats.f_oneway(*pattern_groups)
+        summary += f"\nOne-way ANOVA (pattern effect):"
+        summary += f"\n  F-statistic: {f_stat:.4f}"
+        summary += f"\n  p-value: {p_value:.4e}"
+        if p_value < 0.001:
+            summary += " ***"
+        elif p_value < 0.01:
+            summary += " **"
+        elif p_value < 0.05:
+            summary += " *"
+        summary += "\n  Interpretation: "
+        if p_value < 0.05:
+            summary += "Pattern type SIGNIFICANTLY affects performance"
+        else:
+            summary += "No significant effect of pattern type"
+    
+    # Pairwise comparisons (if coherent vs random exist)
+    if 'c' in patterns and 'r' in patterns:
+        coherent_scores = df[df['pattern'] == 'c']['score'].values
+        random_scores = df[df['pattern'] == 'r']['score'].values
+        
+        t_stat, p_value = stats.ttest_ind(coherent_scores, random_scores)
+        cohen_d = (coherent_scores.mean() - random_scores.mean()) / np.sqrt(
+            (coherent_scores.std()**2 + random_scores.std()**2) / 2
+        )
+        
+        summary += f"\n\nCoherent vs Random (t-test):"
+        summary += f"\n  t-statistic: {t_stat:.4f}"
+        summary += f"\n  p-value: {p_value:.4e}"
+        if p_value < 0.001:
+            summary += " ***"
+        elif p_value < 0.01:
+            summary += " **"
+        elif p_value < 0.05:
+            summary += " *"
+        summary += f"\n  Cohen's d: {cohen_d:.4f} "
+        if abs(cohen_d) > 0.8:
+            summary += "(large effect)"
+        elif abs(cohen_d) > 0.5:
+            summary += "(medium effect)"
+        elif abs(cohen_d) > 0.2:
+            summary += "(small effect)"
+        else:
+            summary += "(negligible effect)"
+        summary += f"\n  Coherent mean: {coherent_scores.mean():.2%} ± {stats.sem(coherent_scores):.4f}"
+        summary += f"\n  Random mean: {random_scores.mean():.2%} ± {stats.sem(random_scores):.4f}"
+    
+    # Inter-trial reliability (ICC)
+    summary += f"\n\n{'='*70}\nReliability Analysis:\n{'='*70}\n"
+    
+    # Calculate ICC for each pattern
+    for pattern in patterns:
+        pattern_df = df[df['pattern'] == pattern]
+        if pattern_df['trial_id'].nunique() > 1:
+            # Reshape for ICC calculation
+            pivot_data = pattern_df.pivot_table(
+                values='score', 
+                index='config_id', 
+                columns='trial_id'
+            )
+            
+            if len(pivot_data) > 1:
+                # Calculate ICC(2,1) - two-way random effects
+                n_configs = len(pivot_data)
+                n_trials = pivot_data.shape[1]
+                
+                grand_mean = pivot_data.values.mean()
+                ss_rows = n_trials * ((pivot_data.mean(axis=1) - grand_mean)**2).sum()
+                ss_cols = n_configs * ((pivot_data.mean(axis=0) - grand_mean)**2).sum()
+                ss_error = ((pivot_data.values - pivot_data.mean(axis=1).values.reshape(-1, 1) - 
+                            pivot_data.mean(axis=0).values + grand_mean)**2).sum()
+                
+                ms_rows = ss_rows / (n_configs - 1)
+                ms_error = ss_error / ((n_configs - 1) * (n_trials - 1))
+                
+                icc = (ms_rows - ms_error) / (ms_rows + (n_trials - 1) * ms_error)
+                
+                summary += f"\nPattern '{pattern}':"
+                summary += f"\n  ICC(2,1): {icc:.4f}"
+                if icc > 0.75:
+                    summary += " (excellent reliability)"
+                elif icc > 0.60:
+                    summary += " (good reliability)"
+                elif icc > 0.40:
+                    summary += " (fair reliability)"
+                else:
+                    summary += " (poor reliability)"
+    
+    summary += f"\n\n{'='*70}\nSignificance levels: * p<0.05, ** p<0.01, *** p<0.001\n{'='*70}\n"
+    
+    with open(output_file, 'w') as f:
+        f.write(summary)
+    
+    print(f"📝 Summary saved to {output_file}")
+    return summary
+
+
+================================================
+File: src/analysis/visualizations.py
+================================================
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import json
+import numpy as np
+from pathlib import Path
+from typing import Dict
+
+class ResultsVisualizer:
+    """Centralized visualization for experiment results"""
+    
+    def __init__(self, results_csv: str, output_dir: str = "data/results"):
+        self.df = pd.read_csv(results_csv)
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._expand_word_details()
+        self._setup_color_scheme()
+    
+    def _setup_color_scheme(self):
+        """Dynamically generate colors for all patterns"""
+        patterns = sorted(self.df['pattern'].unique())
+        
+        # Use matplotlib's qualitative color palettes
+        if len(patterns) <= 10:
+            colors = plt.cm.tab10(np.linspace(0, 1, 10))
+        elif len(patterns) <= 20:
+            colors = plt.cm.tab20(np.linspace(0, 1, 20))
+        else:
+            colors = plt.cm.hsv(np.linspace(0, 0.9, len(patterns)))
+        
+        self.color_map = {pattern: colors[i] for i, pattern in enumerate(patterns)}
+        
+        # Override with semantic colors if pattern type is obvious
+        semantic_colors = {
+            'c': '#2ca02c',      # Green for coherent
+            'r': '#d62728',      # Red for random
+        }
+        
+        for pattern in patterns:
+            if pattern in semantic_colors:
+                self.color_map[pattern] = semantic_colors[pattern]
+            elif pattern.startswith('c') and 'r' not in pattern.lower():
+                self.color_map[pattern] = plt.cm.Greens(0.5 + 0.3 * (hash(pattern) % 5) / 5)
+            elif pattern.startswith('r') and 'c' not in pattern.lower():
+                self.color_map[pattern] = plt.cm.Reds(0.5 + 0.3 * (hash(pattern) % 5) / 5)
+    
+    def _expand_word_details(self):
+        """Expand word_details JSON into separate rows for analysis"""
+        expanded_rows = []
+        
+        for _, row in self.df.iterrows():
+            trial_id = int(row['id'].split('_')[-2])
+            config_id = '_'.join(row['id'].split('_')[:-2])
+            
+            word_details = json.loads(row['word_details'])
+            for wd in word_details:
+                expanded_rows.append({
+                    'pattern': row['pattern'],
+                    'count': row['count'], 
+                    'score': row['score'],
+                    'position_in_rule': wd['position'],
+                    'word': wd['word'],
+                    'found': wd['found'],
+                    'positions_in_text': wd['positions_in_text'],
+                    'occurrences': wd['occurrences'],
+                    'sample_id': row['id'],
+                    'trial_id': trial_id,
+                    'config_id': config_id
+                })
+        
+        self.expanded_df = pd.DataFrame(expanded_rows)
+    
+    def plot_follow_rate_by_position_absolute(self):
+        """Separate subplots for each pattern, ORGANIZED BY RULE COUNT"""
+        rule_counts = sorted(self.expanded_df['count'].unique())
+        
+        for count in rule_counts:
+            count_data = self.expanded_df[self.expanded_df['count'] == count]
+            
+            # Create subdirectory for this count
+            count_dir = self.output_dir / f"{count}_rules"
+            count_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Get patterns for this count
+            patterns = sorted(count_data['pattern'].unique())
+            n_patterns = len(patterns)
+            
+            n_cols = 3
+            n_rows = (n_patterns + n_cols - 1) // n_cols
+            
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 4*n_rows), 
+                                    sharex=False, sharey=True)
+            if n_patterns == 1:
+                axes = [axes]
+            else:
+                axes = axes.flatten()
+            
+            for idx, pattern in enumerate(patterns):
+                ax = axes[idx]
+                pattern_data = count_data[count_data['pattern'] == pattern]
+                
+                max_position = pattern_data['position_in_rule'].max()
+                
+                position_stats = pattern_data.groupby(['position_in_rule', 'trial_id'])['found'].mean().reset_index()
+                position_agg = position_stats.groupby('position_in_rule').agg({
+                    'found': ['mean', 'sem', 'count']
+                }).reset_index()
+                
+                position_agg.columns = ['position', 'mean', 'sem', 'count']
+                
+                color = self.color_map.get(pattern, 'steelblue')
+                
+                ax.plot(position_agg['position'], position_agg['mean'], 
+                       marker='o', linewidth=2, markersize=3, color=color)
+                
+                ax.fill_between(
+                    position_agg['position'],
+                    position_agg['mean'] - 1.96 * position_agg['sem'],
+                    position_agg['mean'] + 1.96 * position_agg['sem'],
+                    alpha=0.3, color=color
+                )
+                
+                n_trials = int(position_agg['count'].iloc[0])
+                ax.set_title(f"Pattern: {pattern} (n={n_trials} trials)", 
+                            fontsize=11, fontweight='bold')
+                ax.set_xlabel("Absolute Position in Rule", fontsize=10)
+                ax.set_ylabel("Follow Rate", fontsize=10)
+                ax.grid(True, alpha=0.3, linestyle='--')
+                ax.set_ylim(-0.05, 1.05)
+                ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+                
+                overall_mean = position_agg['mean'].mean()
+                ax.axhline(y=overall_mean, color='red', linestyle='-', linewidth=1.5, alpha=0.7,
+                          label=f'Mean: {overall_mean:.2%}')
+                ax.legend(fontsize=8)
+                
+                ax.set_xlim(-2, max_position + 2)
+            
+            for idx in range(n_patterns, len(axes)):
+                axes[idx].axis('off')
+            
+            plt.suptitle(f"Follow Rate by Absolute Position ({count} rules)", 
+                        fontsize=16, fontweight='bold', y=1.00)
+            plt.tight_layout()
+            plt.savefig(count_dir / "01a_follow_rate_by_absolute_position.png", 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
+    
+    def plot_follow_rate_heatmap_absolute(self):
+        """Heatmap with absolute positions, ONE PER RULE COUNT"""
+        rule_counts = sorted(self.expanded_df['count'].unique())
+        
+        for count in rule_counts:
+            count_dir = self.output_dir / f"{count}_rules"
+            count_dir.mkdir(parents=True, exist_ok=True)
+            
+            count_data = self.expanded_df[self.expanded_df['count'] == count].copy()
+            
+            fig, ax = plt.subplots(figsize=(16, 6))
+            
+            max_pos = count_data['position_in_rule'].max()
+            count_data['position_pct'] = (count_data['position_in_rule'] / max_pos * 100).astype(int)
+            
+            trial_agg = count_data.groupby(['pattern', 'position_pct', 'trial_id'])['found'].mean().reset_index()
+            final_agg = trial_agg.groupby(['pattern', 'position_pct'])['found'].mean().reset_index()
+            
+            heatmap_data = final_agg.pivot(index='pattern', columns='position_pct', values='found')
+            
+            sns.heatmap(
+                heatmap_data, 
+                cmap='RdYlGn', 
+                cbar_kws={'label': 'Follow Rate'},
+                ax=ax,
+                vmin=0,
+                vmax=1,
+                linewidths=0.5,
+                linecolor='white',
+                annot=False,
+                xticklabels=10
+            )
+            
+            ax.set_xlabel("Position in Rule (%)", fontsize=12)
+            ax.set_ylabel("Pattern Type", fontsize=12)
+            ax.set_title(f"Follow Rate Heatmap ({count} rules)", 
+                        fontsize=13, fontweight='bold')
+            
+            plt.tight_layout()
+            plt.savefig(count_dir / "01b_follow_rate_heatmap_absolute.png", 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
+    
+    def plot_pattern_performance_overview(self):
+        """Bar plot: Overall pattern performance BY RULE COUNT"""
+        rule_counts = sorted(self.expanded_df['count'].unique())
+        
+        for count in rule_counts:
+            count_dir = self.output_dir / f"{count}_rules"
+            count_dir.mkdir(parents=True, exist_ok=True)
+            
+            count_data = self.expanded_df[self.expanded_df['count'] == count]
+            
+            fig, ax = plt.subplots(figsize=(12, 6))
+            
+            pattern_scores = count_data.groupby('pattern')['found'].agg(
+                mean='mean',
+                std='std',
+                n='count'
+            ).reset_index()
+            
+            patterns = sorted(pattern_scores['pattern'].unique())
+            x = np.arange(len(patterns))
+            
+            # Use pattern colors
+            colors = [self.color_map.get(p, 'steelblue') for p in patterns]
+            
+            ax.bar(x, pattern_scores['mean'], 
+                   alpha=0.8,
+                   yerr=pattern_scores['std'], capsize=3,
+                   color=colors)
+            
+            ax.set_xlabel("Pattern Type", fontsize=12)
+            ax.set_ylabel("Follow Rate", fontsize=12)
+            ax.set_title(f"Overall Follow Rate by Pattern ({count} rules)", 
+                        fontsize=14, fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels(patterns, rotation=45, ha='right')
+            ax.set_ylim(0, 1.1)
+            ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+            ax.grid(axis='y', alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig(count_dir / "01d_pattern_performance.png", 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
+
+    def plot_rule_position_vs_text_position(self):
+        """Scatter plots: ORGANIZED BY RULE COUNT"""
+        rule_counts = sorted(self.expanded_df['count'].unique())
+        
+        for count in rule_counts:
+            count_dir = self.output_dir / f"{count}_rules"
+            count_dir.mkdir(parents=True, exist_ok=True)
+            
+            count_data = self.expanded_df[self.expanded_df['count'] == count]
+            patterns = sorted(count_data['pattern'].unique())
+            n_patterns = len(patterns)
+            
+            n_cols = 3
+            n_rows = (n_patterns + n_cols - 1) // n_cols
+            
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
+            if n_patterns == 1:
+                axes = [axes]
+            else:
+                axes = axes.flatten()
+            
+            for idx, pattern in enumerate(patterns):
+                ax = axes[idx]
+                
+                pattern_data = count_data[
+                    (count_data['pattern'] == pattern) &
+                    (count_data['found'] == True) &
+                    (count_data['occurrences'] > 0)
+                ].copy()
+                
+                if len(pattern_data) == 0:
+                    ax.text(0.5, 0.5, f"No data\nPattern: {pattern}", 
+                           ha='center', va='center', transform=ax.transAxes, fontsize=10)
+                    ax.set_title(f"{pattern}")
+                    continue
+                
+                pattern_data['first_pos_in_text'] = pattern_data['positions_in_text'].apply(
+                    lambda x: x[0] if x and len(x) > 0 else -1
+                )
+                pattern_data = pattern_data[pattern_data['first_pos_in_text'] >= 0]
+                
+                if len(pattern_data) == 0:
+                    ax.text(0.5, 0.5, f"No valid positions\nPattern: {pattern}", 
+                           ha='center', va='center', transform=ax.transAxes, fontsize=10)
+                    ax.set_title(f"{pattern}")
+                    continue
+                
+                color = self.color_map.get(pattern, 'steelblue')
+                
+                ax.scatter(
+                    pattern_data['position_in_rule'], 
+                    pattern_data['first_pos_in_text'],
+                    alpha=0.5, 
+                    s=50,
+                    c=[color] * len(pattern_data),
+                    edgecolors='black',
+                    linewidths=0.5
+                )
+                
+                if len(pattern_data) > 2:
+                    z = np.polyfit(pattern_data['position_in_rule'], 
+                                  pattern_data['first_pos_in_text'], 1)
+                    p = np.poly1d(z)
+                    x_trend = np.linspace(pattern_data['position_in_rule'].min(), 
+                                         pattern_data['position_in_rule'].max(), 100)
+                    ax.plot(x_trend, p(x_trend), "r--", alpha=0.8, linewidth=2, 
+                           label=f'Trend (slope={z[0]:.2f})')
+                    
+                    corr = np.corrcoef(pattern_data['position_in_rule'], 
+                                      pattern_data['first_pos_in_text'])[0, 1]
+                    ax.text(0.05, 0.95, f'r={corr:.3f}', 
+                           transform=ax.transAxes, 
+                           verticalalignment='top',
+                           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+                
+                ax.set_xlabel("Position in Rule", fontsize=10)
+                ax.set_ylabel("Character Position in Text", fontsize=10)
+                ax.set_title(f"Pattern: {pattern}", fontsize=11, fontweight='bold')
+                if len(pattern_data) > 2:
+                    ax.legend(fontsize=8)
+                ax.grid(True, alpha=0.3)
+            
+            for idx in range(n_patterns, len(axes)):
+                axes[idx].axis('off')
+            
+            plt.suptitle(f"Rule Position vs Text Position ({count} rules)", 
+                        fontsize=15, fontweight='bold', y=1.00)
+            plt.tight_layout()
+            plt.savefig(count_dir / "02_rule_position_vs_text_position.png", 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
+    
+    def create_all(self):
+        """Generate all visualizations"""
+        print("Generating visualizations...")
+        
+        self.plot_follow_rate_by_position_absolute()
+        print("✅ Follow rate by absolute position (organized by rule count)")
+        
+        self.plot_follow_rate_heatmap_absolute()
+        print("✅ Follow rate heatmap (organized by rule count)")
+                        
+        self.plot_pattern_performance_overview()
+        print("✅ Pattern performance overview (organized by rule count)")
+        
+        self.plot_rule_position_vs_text_position()
+        print("✅ Rule position vs text position (organized by rule count)")
+        
+        print(f"📊 All visualizations saved to {self.output_dir}")
+

@@ -20,12 +20,13 @@ def main(cfg: DictConfig):
     )
     
     counts = cfg.word_data_generator.rule_counts
-    trials = cfg.word_data_generator.trials_per_count
+    trials_per_seed = cfg.word_data_generator.trials_per_seed
     patterns = cfg.word_data_generator.get('patterns', ['c', 'r'])
     
     logger.info(f"Generating for counts: {counts}")
+    logger.info(f"Trials per seed: {trials_per_seed}")
     logger.info(f"Using patterns: {patterns}")
-    dataset = gen.generate_dataset(rule_counts=counts, trials=trials, patterns=patterns)
+    dataset = gen.generate_dataset(rule_counts=counts, trials_per_seed=trials_per_seed, patterns=patterns)
     
     gen.save_dataset(dataset, cfg.word_data_generator.dataset_path)
     logger.info(f"Generated {len(dataset)} samples")
