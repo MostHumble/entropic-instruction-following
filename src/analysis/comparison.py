@@ -26,14 +26,11 @@ class MultiModelComparison:
         dfs = []
         for csv_file in csv_files:
             df = pd.read_csv(csv_file)
-            if 'model' not in df.columns:
-                parts = csv_file.stem.split('_')
-                model_name = '_'.join(parts[2:]) if len(parts) >= 3 else 'unknown'
-                df['model'] = model_name
+            df['model'] = df['model_name_full'].apply(lambda x: x.split('/')[-1].lower().replace('instruct','it'))
             dfs.append(df)
 
         combined = pd.concat(dfs, ignore_index=True)
-        print(f"📊 Loaded {len(csv_files)} result files, {len(combined)} total samples")
+        print(f" Loaded {len(csv_files)} result files, {len(combined)} total samples")
         print(f"   Models: {sorted(combined['model'].unique())}")
 
         return combined
@@ -77,53 +74,90 @@ class MultiModelComparison:
         self.model_colors = {model: colors[i] for i, model in enumerate(models)}
 
     def plot_model_comparison_comprehensive(self):
+        """Comprehensive model comparison"""
         models = sorted(self.all_results['model'].unique())
         if len(models) <= 1:
-            print("⚠️  Only one model found, skipping comparison")
+            print(" Only one model found, skipping comparison")
             return
 
-        fig = plt.figure(figsize=(20, 12))
-        gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+        counts = sorted(self.expanded_df['count'].unique())
+        
+        # Create individual plots per rule count
+        for count in counts:
+            count_data = self.expanded_df[self.expanded_df['count'] == count]
+            
+            # Create subdirectory for this count
+            count_dir = self.results_dir / f"comparison_{count}_rules"
+            count_dir.mkdir(parents=True, exist_ok=True)
+            
+            print(f"\n📊 Generating comparisons for {count} rules...")
+            
+            # 1. Pattern comparison (bar chart)
+            fig, ax = plt.subplots(figsize=(12, 6))
+            self._plot_model_pattern_comparison(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "01_pattern_comparison.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Pattern comparison")
+            
+            # 2. Pattern heatmap
+            fig, ax = plt.subplots(figsize=(10, 6))
+            self._plot_model_by_pattern_heatmap(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "02_pattern_heatmap.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Pattern heatmap")
+            
+            # 3. Position-based follow rate
+            fig, ax = plt.subplots(figsize=(14, 6))
+            self._plot_model_position_comparison(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "03_position_comparison.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Position comparison")
+            
+            # 4. Primacy/Recency effect
+            fig, ax = plt.subplots(figsize=(10, 6))
+            self._plot_model_primacy_recency(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "04_primacy_recency.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Primacy/recency")
+            
+            # 5. Coherent vs Random
+            fig, ax = plt.subplots(figsize=(10, 6))
+            self._plot_model_coherent_vs_random(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "05_coherent_vs_random.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Coherent vs random")
+            
+            # 6. Summary table
+            fig, ax = plt.subplots(figsize=(10, 6))
+            self._plot_model_summary_table(ax, count_data)
+            plt.tight_layout()
+            plt.savefig(count_dir / "06_summary_table.png", dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"  ✅ Summary table")
+            
+            print(f"📁 Saved to: {count_dir}")
+        
+        # Also create cross-count comparison
+        print(f"\n📊 Generating cross-count comparisons...")
+        self._plot_rule_length_comparison_all()
+        print(f"✅ All model comparisons complete!")
 
-        ax1 = fig.add_subplot(gs[0, :2])
-        self._plot_model_pattern_comparison(ax1)
-
-        ax2 = fig.add_subplot(gs[0, 2])
-        self._plot_model_by_rule_length(ax2)
-
-        ax3 = fig.add_subplot(gs[1, :])
-        self._plot_model_position_comparison(ax3)
-
-        ax4 = fig.add_subplot(gs[2, 0])
-        self._plot_model_primacy_recency(ax4)
-
-        ax5 = fig.add_subplot(gs[2, 1])
-        self._plot_model_coherent_vs_random(ax5)
-
-        ax6 = fig.add_subplot(gs[2, 2])
-        self._plot_model_summary_table(ax6)
-
-        plt.suptitle("Model Comparison: Comprehensive Analysis",
-                     fontsize=18, fontweight='bold', y=0.995)
-        plt.savefig(self.results_dir / "model_comparison_comprehensive.png",
-                    dpi=300, bbox_inches='tight')
-        plt.close()
-        print("✅ Comprehensive model comparison saved")
-
-    # -------------------------
-    # FIXED AGG CALLS BELOW
-    # -------------------------
-
-    def _plot_model_pattern_comparison(self, ax):
+    def _plot_model_pattern_comparison(self, ax, data):
+        """Compare models across patterns for SPECIFIC rule count"""
+        models = sorted(data['model'].unique())
+        patterns = sorted(data['pattern'].unique())
+        
         model_pattern_scores = (
-            self.expanded_df
+            data
                 .groupby(['model', 'pattern'])['found']
                 .agg(mean='mean', sem='sem')
                 .reset_index()
         )
-
-        models = sorted(self.all_results['model'].unique())
-        patterns = sorted(self.expanded_df['pattern'].unique())
 
         x = np.arange(len(patterns))
         width = 0.8 / len(models)
@@ -152,46 +186,30 @@ class MultiModelComparison:
         ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         ax.grid(axis='y', alpha=0.3)
 
-    def _plot_model_by_rule_length(self, ax):
-        model_count_scores = (
-            self.expanded_df
-                .groupby(['model', 'count'])['found']
-                .agg(mean='mean', sem='sem')
-                .reset_index()
+    def _plot_model_by_pattern_heatmap(self, ax, data):
+        """Heatmap: models vs patterns for specific count"""
+        pivot = data.groupby(['model', 'pattern'])['found'].mean().unstack()
+        
+        sns.heatmap(
+            pivot,
+            cmap='RdYlGn',
+            annot=True,
+            fmt='.2f',
+            cbar_kws={'label': 'Follow Rate'},
+            ax=ax,
+            vmin=0,
+            vmax=1
         )
+        ax.set_xlabel("Pattern", fontsize=11, fontweight='bold')
+        ax.set_ylabel("Model", fontsize=11, fontweight='bold')
+        ax.set_title("Model × Pattern Heatmap", fontsize=12, fontweight='bold')
 
-        models = sorted(model_count_scores['model'].unique())
-
-        for model in models:
-            model_data = model_count_scores[model_count_scores['model'] == model].sort_values('count')
-            color = self.model_colors[model]
-
-            ax.plot(
-                model_data['count'], model_data['mean'],
-                marker='o', linewidth=2, markersize=8,
-                label=model, color=color, alpha=0.8
-            )
-
-            ax.fill_between(
-                model_data['count'],
-                model_data['mean'] - 1.96 * model_data['sem'],
-                model_data['mean'] + 1.96 * model_data['sem'],
-                alpha=0.2, color=color
-            )
-
-        ax.set_xlabel("Rule Length (words)", fontsize=11, fontweight='bold')
-        ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
-        ax.set_title("Scaling with Rule Length", fontsize=12, fontweight='bold')
-        ax.legend(title="Model", fontsize=8)
-        ax.set_ylim(0, 1.0)
-        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-        ax.grid(True, alpha=0.3)
-
-    def _plot_model_position_comparison(self, ax):
-        models = sorted(self.expanded_df['model'].unique())
+    def _plot_model_position_comparison(self, ax, data):
+        """Position comparison for specific rule count"""
+        models = sorted(data['model'].unique())
 
         for model in models:
-            model_data = self.expanded_df[self.expanded_df['model'] == model].copy()
+            model_data = data[data['model'] == model].copy()
 
             max_pos = model_data['position_in_rule'].max()
             model_data['position_pct'] = (model_data['position_in_rule'] / max_pos * 100).astype(int)
@@ -223,17 +241,17 @@ class MultiModelComparison:
         ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         ax.grid(True, alpha=0.3)
 
-    def _plot_model_primacy_recency(self, ax):
-        """Compare primacy/recency effects across models"""
-        # Create quintiles
-        self.expanded_df['position_quintile'] = pd.qcut(
-            self.expanded_df['position_in_rule'], 
+    def _plot_model_primacy_recency(self, ax, data):
+        """Primacy/recency for specific count"""
+        data = data.copy()
+        data['position_quintile'] = pd.qcut(
+            data['position_in_rule'], 
             q=5, 
             duplicates='drop', 
             labels=['1st', '2nd', '3rd', '4th', '5th']
         )
         
-        model_quintile = self.expanded_df.groupby(['model', 'position_quintile'], observed=True)['found'].mean().unstack()
+        model_quintile = data.groupby(['model', 'position_quintile'], observed=True)['found'].mean().unstack()
         
         model_quintile.plot(kind='bar', ax=ax, alpha=0.8, width=0.8)
         ax.set_xlabel("Model", fontsize=11, fontweight='bold')
@@ -245,7 +263,8 @@ class MultiModelComparison:
         ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         ax.grid(axis='y', alpha=0.3)
 
-    def _plot_model_coherent_vs_random(self, ax):
+    def _plot_model_coherent_vs_random(self, ax, data):
+        """Coherent vs random for specific count"""
         def classify_pattern(pattern):
             if pattern == 'c' or (pattern.startswith('c') and 'r' not in pattern):
                 return 'Coherent'
@@ -254,10 +273,11 @@ class MultiModelComparison:
             else:
                 return 'Mixed'
 
-        self.expanded_df['pattern_type'] = self.expanded_df['pattern'].apply(classify_pattern)
+        data = data.copy()
+        data['pattern_type'] = data['pattern'].apply(classify_pattern)
 
         model_type_scores = (
-            self.expanded_df
+            data
                 .groupby(['model', 'pattern_type'])['found']
                 .agg(mean='mean', sem='sem')
                 .reset_index()
@@ -293,16 +313,17 @@ class MultiModelComparison:
         ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         ax.grid(axis='y', alpha=0.3)
 
-    def _plot_model_summary_table(self, ax):
+    def _plot_model_summary_table(self, ax, data):
+        """Summary table for specific count"""
         ax.axis('off')
 
         summary_stats = []
-        for model in sorted(self.all_results['model'].unique()):
-            model_expanded = self.expanded_df[self.expanded_df['model'] == model]
+        for model in sorted(data['model'].unique()):
+            model_data = data[data['model'] == model]
 
-            overall_mean = model_expanded['found'].mean()
+            overall_mean = model_data['found'].mean()
 
-            pattern_means = model_expanded.groupby('pattern')['found'].mean()
+            pattern_means = model_data.groupby('pattern')['found'].mean()
             best_pattern = pattern_means.idxmax()
             best_score = pattern_means.max()
 
@@ -338,6 +359,99 @@ class MultiModelComparison:
                     table[(i, j)].set_facecolor('#f0f0f0')
 
         ax.set_title("Summary Statistics", fontsize=12, fontweight='bold', pad=20)
+
+    def _plot_rule_length_comparison_all(self):
+        """NEW: Dedicated plot showing how models scale with rule length"""
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        
+        # Left: Overall scaling
+        ax1 = axes[0]
+        model_count_scores = (
+            self.expanded_df
+                .groupby(['model', 'count'])['found']
+                .agg(mean='mean', sem='sem')
+                .reset_index()
+        )
+
+        models = sorted(model_count_scores['model'].unique())
+
+        for model in models:
+            model_data = model_count_scores[model_count_scores['model'] == model].sort_values('count')
+            color = self.model_colors[model]
+
+            ax1.plot(
+                model_data['count'], model_data['mean'],
+                marker='o', linewidth=2, markersize=8,
+                label=model, color=color, alpha=0.8
+            )
+
+            ax1.fill_between(
+                model_data['count'],
+                model_data['mean'] - 1.96 * model_data['sem'],
+                model_data['mean'] + 1.96 * model_data['sem'],
+                alpha=0.2, color=color
+            )
+
+        ax1.set_xlabel("Number of Rules", fontsize=12, fontweight='bold')
+        ax1.set_ylabel("Overall Follow Rate", fontsize=12, fontweight='bold')
+        ax1.set_title("Scaling with Number of Rules (All Patterns)", fontsize=13, fontweight='bold')
+        ax1.legend(title="Model", fontsize=9)
+        ax1.set_ylim(0, 1.0)
+        ax1.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax1.grid(True, alpha=0.3)
+        
+        # Right: Pattern-specific scaling (coherent vs random)
+        ax2 = axes[1]
+        
+        def classify_pattern(pattern):
+            if pattern in ['c', 'r']:
+                return pattern
+            return 'mixed'
+        
+        scaling_data = self.expanded_df.copy()
+        scaling_data['pattern_class'] = scaling_data['pattern'].apply(classify_pattern)
+        scaling_data = scaling_data[scaling_data['pattern_class'].isin(['c', 'r'])]
+        
+        for model in models:
+            for pclass, pstyle in [('c', '-'), ('r', '--')]:
+                model_pattern_data = scaling_data[
+                    (scaling_data['model'] == model) & 
+                    (scaling_data['pattern_class'] == pclass)
+                ]
+                
+                if len(model_pattern_data) == 0:
+                    continue
+                
+                count_stats = (
+                    model_pattern_data
+                        .groupby('count')['found']
+                        .agg(mean='mean', sem='sem')
+                        .reset_index()
+                        .sort_values('count')
+                )
+                
+                color = self.model_colors[model]
+                label = f"{model} ({'coherent' if pclass == 'c' else 'random'})"
+                
+                ax2.plot(
+                    count_stats['count'], count_stats['mean'],
+                    marker='o', linewidth=2, markersize=6,
+                    linestyle=pstyle, label=label, color=color, alpha=0.8
+                )
+        
+        ax2.set_xlabel("Rule Length (words)", fontsize=12, fontweight='bold')
+        ax2.set_ylabel("Follow Rate", fontsize=12, fontweight='bold')
+        ax2.set_title("Scaling: Coherent vs Random", fontsize=13, fontweight='bold')
+        ax2.legend(fontsize=8, ncol=2)
+        ax2.set_ylim(0, 1.0)
+        ax2.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(self.results_dir / "model_comparison_rule_length_scaling.png", 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+        print("✅ Rule length scaling comparison saved")
 
     def get_summary(self) -> str:
         summary = ["=" * 60, "MODEL COMPARISON SUMMARY", "=" * 60, ""]

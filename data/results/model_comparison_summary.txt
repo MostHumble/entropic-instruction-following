@@ -2,26 +2,26 @@
 MODEL COMPARISON SUMMARY
 ============================================================
 
-falcon:
+falcon-h1-7b-it:
   Mean score: 46.71% (±0.3473)
   Samples: 36
 
-llama:
+llama-3.2-1b-it:
   Mean score: 2.68% (±0.0616)
   Samples: 36
 
-mistral:
+mistral-7b-it-v0.1:
   Mean score: 30.97% (±0.2620)
   Samples: 36
 
-olmo:
+olmo-3-7b-it:
   Mean score: 70.85% (±0.2764)
   Samples: 36
 
-qwen2.5-0.5:
+qwen2.5-0.5b-it:
   Mean score: 12.27% (±0.2399)
   Samples: 60
 
-smol2-360:
+smollm2-360m-it:
   Mean score: 8.16% (±0.2072)
   Samples: 60
