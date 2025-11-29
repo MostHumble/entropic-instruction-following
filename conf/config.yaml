@@ -10,7 +10,7 @@ experiment:
 
 word_data_generator:
   dataset_path: "data/raw/dataset_v1.json"
-  trials_per_seed: 1  # Number of random samples from each seed's word pool
+  trials_per_seed: 2  # Number of random samples from each seed's word pool
   seeds: [
     "food.n.02",
     "artifact.n.01",
@@ -20,8 +20,8 @@ word_data_generator:
     "location.n.01",
     "event.n.01",
     "substance.n.01",
-    "attribute.n.01",
-    "communication.n.02"
+    "communication.n.02",
+    "cognition.n.01"
   ]
   rule_counts: [50, 100, 200, 400, 800]
   # Pattern mixing experiments

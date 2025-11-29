@@ -140,8 +140,10 @@ def run_inference_for_model(
         results.append({
             "id": case['id'],
             "type": case['type'],
-            "pattern": case.get('pattern', 'unknown'),
+            "pattern": case['pattern'],
             "count": case['count'],
+            "trial": case['trial'],
+            "seed": case['seed'],
             "strategy": cfg.strategy.name,
             "model": model_name,
             "model_name_full": model_cfg.model.name,

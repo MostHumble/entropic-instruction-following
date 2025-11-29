@@ -40,8 +40,12 @@ class MultiModelComparison:
         expanded_rows = []
 
         for _, row in self.all_results.iterrows():
-            trial_id = int(row['id'].split('_')[-2])
-            config_id = '_'.join(row['id'].split('_')[:-2])
+            # Extract seed and trial from the row (new data structure)
+            seed = row.get('seed', 'unknown')
+            trial_id = row.get('trial', 0)
+            
+            # Create config_id without trial info for grouping
+            config_id = f"{row['model']}_{seed}_{row['pattern']}_{row['count']}"
 
             word_details = json.loads(row['word_details'])
             for wd in word_details:
@@ -50,13 +54,14 @@ class MultiModelComparison:
                     'pattern': row['pattern'],
                     'count': row['count'],
                     'score': row['score'],
+                    'seed': seed,
+                    'trial_id': trial_id,
                     'position_in_rule': wd['position'],
                     'word': wd['word'],
                     'found': wd['found'],
                     'positions_in_text': wd['positions_in_text'],
                     'occurrences': wd['occurrences'],
                     'sample_id': row['id'],
-                    'trial_id': trial_id,
                     'config_id': config_id
                 })
 
@@ -74,10 +79,10 @@ class MultiModelComparison:
         self.model_colors = {model: colors[i] for i, model in enumerate(models)}
 
     def plot_model_comparison_comprehensive(self):
-        """Comprehensive model comparison"""
+        """Comprehensive model comparison - SEPARATED by rule count, individual plots"""
         models = sorted(self.all_results['model'].unique())
         if len(models) <= 1:
-            print(" Only one model found, skipping comparison")
+            print("⚠️  Only one model found, skipping comparison")
             return
 
         counts = sorted(self.expanded_df['count'].unique())
@@ -90,7 +95,7 @@ class MultiModelComparison:
             count_dir = self.results_dir / f"comparison_{count}_rules"
             count_dir.mkdir(parents=True, exist_ok=True)
             
-            print(f"\n📊 Generating comparisons for {count} rules...")
+            print(f"\n📊 Generating comparisons for {count}rules...")
             
             # 1. Pattern comparison (bar chart)
             fig, ax = plt.subplots(figsize=(12, 6))
@@ -392,9 +397,9 @@ class MultiModelComparison:
                 alpha=0.2, color=color
             )
 
-        ax1.set_xlabel("Number of Rules", fontsize=12, fontweight='bold')
+        ax1.set_xlabel("Rule Length (words)", fontsize=12, fontweight='bold')
         ax1.set_ylabel("Overall Follow Rate", fontsize=12, fontweight='bold')
-        ax1.set_title("Scaling with Number of Rules (All Patterns)", fontsize=13, fontweight='bold')
+        ax1.set_title("Scaling with Rule Length (All Patterns)", fontsize=13, fontweight='bold')
         ax1.legend(title="Model", fontsize=9)
         ax1.set_ylim(0, 1.0)
         ax1.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
