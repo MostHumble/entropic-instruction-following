@@ -10,7 +10,7 @@ experiment:
 
 word_data_generator:
   dataset_path: "data/raw/dataset_v1.json"
-  trials_per_seed: 2  # Number of random samples from each seed's word pool
+  trials_per_seed: 10  # Number of random samples from each seed's word pool
   seeds: [
     "food.n.02",
     "artifact.n.01",
@@ -23,7 +23,7 @@ word_data_generator:
     "communication.n.02",
     "cognition.n.01"
   ]
-  rule_counts: [50, 100, 200, 400, 800]
+  rule_counts: [50, 200, 400]
   # Pattern mixing experiments
   patterns:
     - "c"        # Pure coherent
@@ -34,14 +34,13 @@ word_data_generator:
     - "r|c"      # Half random, half coherent
     - "c|r|c"    # Bookends (coherent-random-coherent)
     - "r|c|r"    # Inverse bookends
-    - "c0|c1"    # Multi-seed (first seed | second seed)
   alphanumeric_only: true
   
 # These can be overridden by the specific model yamls
 inference:
   trust_remote_code: false
-  max_model_len: 12288
+  max_model_len: 3072
   sampling:
     temperature: 0
     top_p: 1.0
-    max_tokens: 4096
+    max_tokens: 2048
