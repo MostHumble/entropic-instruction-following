@@ -118,7 +118,6 @@ def run_inference_for_model(
         model=model_cfg.model.name,
         max_model_len=model_cfg.inference.max_model_len,
         trust_remote_code=model_cfg.inference.trust_remote_code,
-        gpu_memory_utilization=0.85,
         tensor_parallel_size=n_gpus,  # Use all available GPUs
     )
     
