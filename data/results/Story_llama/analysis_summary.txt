@@ -1,0 +1,193 @@
+
+EXPERIMENT RESULTS SUMMARY 
+======================================================================
+
+Overall Statistics:
+  - Total samples: 2100
+  - Unique seeds: 10
+  - Unique configurations (pattern × count): 21
+  - Trials per seed per config: 10.0 (avg)
+  - Total words analyzed: 455000
+  - Overall follow rate: 6.64% ± 0.0004
+  - Mean score: 12.40% ± 0.0033
+
+Data Structure: Seeds → Trials → Patterns → Rule Counts
+  - Between-seed variance: Measures consistency across different semantic domains
+  - Within-seed variance: Measures consistency across trials from same domain
+
+By Pattern (with 95% Confidence Intervals):
+
+  c               (n=50 words, seeds=10):
+    Score: 30.16% [95% CI: 18.47% - 41.85%]
+    Between-seed Std: 0.1887
+    Within-seed Std: 0.1676
+  c               (n=200 words, seeds=10):
+    Score: 11.88% [95% CI: 6.96% - 16.79%]
+    Between-seed Std: 0.0793
+    Within-seed Std: 0.0832
+  c               (n=400 words, seeds=10):
+    Score: 4.87% [95% CI: 4.21% - 5.54%]
+    Between-seed Std: 0.0107
+    Within-seed Std: 0.0230
+  cr              (n=50 words, seeds=10):
+    Score: 22.54% [95% CI: 20.22% - 24.86%]
+    Between-seed Std: 0.0374
+    Within-seed Std: 0.1340
+  cr              (n=200 words, seeds=10):
+    Score: 6.89% [95% CI: 6.13% - 7.66%]
+    Between-seed Std: 0.0123
+    Within-seed Std: 0.0304
+  cr              (n=400 words, seeds=10):
+    Score: 3.21% [95% CI: 2.57% - 3.86%]
+    Between-seed Std: 0.0104
+    Within-seed Std: 0.0099
+  c|r             (n=50 words, seeds=10):
+    Score: 23.04% [95% CI: 13.25% - 32.83%]
+    Between-seed Std: 0.1580
+    Within-seed Std: 0.1650
+  c|r             (n=200 words, seeds=10):
+    Score: 9.66% [95% CI: 5.88% - 13.44%]
+    Between-seed Std: 0.0610
+    Within-seed Std: 0.0655
+  c|r             (n=400 words, seeds=10):
+    Score: 3.81% [95% CI: 3.04% - 4.57%]
+    Between-seed Std: 0.0124
+    Within-seed Std: 0.0169
+  c|r|c           (n=50 words, seeds=10):
+    Score: 26.40% [95% CI: 20.31% - 32.49%]
+    Between-seed Std: 0.0983
+    Within-seed Std: 0.1785
+  c|r|c           (n=200 words, seeds=10):
+    Score: 9.96% [95% CI: 5.29% - 14.63%]
+    Between-seed Std: 0.0753
+    Within-seed Std: 0.0667
+  c|r|c           (n=400 words, seeds=10):
+    Score: 4.01% [95% CI: 3.37% - 4.64%]
+    Between-seed Std: 0.0102
+    Within-seed Std: 0.0205
+  r               (n=50 words, seeds=10):
+    Score: 23.42% [95% CI: 20.33% - 26.51%]
+    Between-seed Std: 0.0498
+    Within-seed Std: 0.1161
+  r               (n=200 words, seeds=10):
+    Score: 6.12% [95% CI: 5.59% - 6.64%]
+    Between-seed Std: 0.0085
+    Within-seed Std: 0.0220
+  r               (n=400 words, seeds=10):
+    Score: 2.36% [95% CI: 2.21% - 2.51%]
+    Between-seed Std: 0.0024
+    Within-seed Std: 0.0104
+  r|c             (n=50 words, seeds=10):
+    Score: 25.98% [95% CI: 22.03% - 29.93%]
+    Between-seed Std: 0.0637
+    Within-seed Std: 0.1378
+  r|c             (n=200 words, seeds=10):
+    Score: 7.18% [95% CI: 6.49% - 7.87%]
+    Between-seed Std: 0.0112
+    Within-seed Std: 0.0366
+  r|c             (n=400 words, seeds=10):
+    Score: 3.24% [95% CI: 2.80% - 3.68%]
+    Between-seed Std: 0.0071
+    Within-seed Std: 0.0101
+  r|c|r           (n=50 words, seeds=10):
+    Score: 26.50% [95% CI: 23.55% - 29.45%]
+    Between-seed Std: 0.0476
+    Within-seed Std: 0.1342
+  r|c|r           (n=200 words, seeds=10):
+    Score: 6.39% [95% CI: 5.80% - 6.99%]
+    Between-seed Std: 0.0096
+    Within-seed Std: 0.0231
+  r|c|r           (n=400 words, seeds=10):
+    Score: 2.78% [95% CI: 2.49% - 3.07%]
+    Between-seed Std: 0.0047
+    Within-seed Std: 0.0094
+
+======================================================================
+Variance Decomposition:
+======================================================================
+
+Pattern 'c':
+  Total variance: 0.038935
+  Between-seed variance: 0.007075 (18.2% of total)
+  Within-seed variance: 0.033557 (86.2% of total)
+  ICC (seed consistency): 0.1741 (low consistency - high seed-specific effects)
+Pattern 'cr':
+  Total variance: 0.013602
+  Between-seed variance: 0.000224 (1.6% of total)
+  Within-seed variance: 0.013815 (101.6% of total)
+  ICC (seed consistency): 0.0160 (low consistency - high seed-specific effects)
+Pattern 'c|r':
+  Total variance: 0.027358
+  Between-seed variance: 0.005379 (19.7% of total)
+  Within-seed variance: 0.023199 (84.8% of total)
+  ICC (seed consistency): 0.1882 (low consistency - high seed-specific effects)
+Pattern 'c|r|c':
+  Total variance: 0.026930
+  Between-seed variance: 0.003092 (11.5% of total)
+  Within-seed variance: 0.024887 (92.4% of total)
+  ICC (seed consistency): 0.1105 (low consistency - high seed-specific effects)
+Pattern 'r':
+  Total variance: 0.013756
+  Between-seed variance: 0.000324 (2.4% of total)
+  Within-seed variance: 0.013881 (100.9% of total)
+  ICC (seed consistency): 0.0228 (low consistency - high seed-specific effects)
+Pattern 'r|c':
+  Total variance: 0.018009
+  Between-seed variance: 0.000499 (2.8% of total)
+  Within-seed variance: 0.018104 (100.5% of total)
+  ICC (seed consistency): 0.0268 (low consistency - high seed-specific effects)
+Pattern 'r|c|r':
+  Total variance: 0.017934
+  Between-seed variance: 0.000286 (1.6% of total)
+  Within-seed variance: 0.018223 (101.6% of total)
+  ICC (seed consistency): 0.0155 (low consistency - high seed-specific effects)
+
+======================================================================
+Statistical Tests:
+======================================================================
+
+One-way ANOVA (pattern effect, using seed-level means):
+  F-statistic: 0.6389
+  p-value: 6.9900e-01
+  Interpretation: No significant effect of pattern type
+  Note: This test uses seed-level means as independent observations
+
+Coherent vs Random (t-test using seed-level means):
+  t-statistic: 1.4799
+  p-value: 1.4430e-01
+  Cohen's d: 0.3887 (small effect)
+  Coherent mean (seed-level): 15.64% ± 0.0287
+  Random mean (seed-level): 10.63% ± 0.0178
+  Coherent mean (all trials): 15.64% ± 0.0114
+  Random mean (all trials): 10.63% ± 0.0068
+  Note: Seed-level analysis treats each seed as independent (n=30 vs 30)
+
+======================================================================
+Reliability Analysis (Within-Seed Trial Consistency):
+======================================================================
+
+Pattern 'c':
+  Average within-seed ICC: 0.7764 (across 10 seeds) (excellent trial consistency)
+  ICC range: [0.5510, 0.9317]
+Pattern 'cr':
+  Average within-seed ICC: 0.8657 (across 10 seeds) (excellent trial consistency)
+  ICC range: [0.8084, 0.9132]
+Pattern 'c|r':
+  Average within-seed ICC: 0.8171 (across 10 seeds) (excellent trial consistency)
+  ICC range: [0.6198, 0.9054]
+Pattern 'c|r|c':
+  Average within-seed ICC: 0.8065 (across 10 seeds) (excellent trial consistency)
+  ICC range: [0.6666, 0.9118]
+Pattern 'r':
+  Average within-seed ICC: 0.8613 (across 10 seeds) (excellent trial consistency)
+  ICC range: [0.8171, 0.8897]
+Pattern 'r|c':
+  Average within-seed ICC: 0.8383 (across 10 seeds) (excellent trial consistency)
+  ICC range: [0.7907, 0.8905]
+Pattern 'r|c|r':
+  Average within-seed ICC: 0.8333 (across 10 seeds) (excellent trial consistency)
+  ICC range: [0.7434, 0.8932]
+
+======================================================================
+Significance levels: * p<0.05, ** p<0.01, *** p<0.001
+======================================================================
