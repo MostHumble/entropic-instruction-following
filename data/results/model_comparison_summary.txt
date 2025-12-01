@@ -1,0 +1,23 @@
+============================================================
+MODEL COMPARISON SUMMARY
+============================================================
+
+falcon-h1-7b-it:
+  Mean score: 30.74% (±0.3030)
+  Samples: 2100
+
+llama-3.2-1b-it:
+  Mean score: 12.40% (±0.1502)
+  Samples: 2100
+
+mistral-7b-it-v0.1:
+  Mean score: 19.50% (±0.2438)
+  Samples: 2100
+
+olmo-3-7b-it:
+  Mean score: 52.94% (±0.3178)
+  Samples: 2100
+
+phi-3.5-mini-it:
+  Mean score: 30.27% (±0.2518)
+  Samples: 2100
