@@ -269,52 +269,51 @@ class MultiModelComparison:
         ax.grid(axis='y', alpha=0.3)
 
     def _plot_model_coherent_vs_random(self, ax, data):
-        """Coherent vs random for specific count"""
-        def classify_pattern(pattern):
-            if pattern == 'c' or (pattern.startswith('c') and 'r' not in pattern):
-                return 'Coherent'
-            elif pattern == 'r' or (pattern.startswith('r') and 'c' not in pattern):
-                return 'Random'
-            else:
-                return 'Mixed'
-
-        data = data.copy()
-        data['pattern_type'] = data['pattern'].apply(classify_pattern)
-
-        model_type_scores = (
+        """Show all patterns individually for specific count"""
+        model_pattern_scores = (
             data
-                .groupby(['model', 'pattern_type'])['found']
+                .groupby(['model', 'pattern'])['found']
                 .agg(mean='mean', sem='sem')
                 .reset_index()
         )
 
-        models = sorted(model_type_scores['model'].unique())
-        pattern_types = ['Coherent', 'Random', 'Mixed']
+        models = sorted(model_pattern_scores['model'].unique())
+        patterns = sorted(model_pattern_scores['pattern'].unique())
 
         x = np.arange(len(models))
-        width = 0.25
+        width = 0.8 / len(patterns)
 
-        colors = {'Coherent': '#2ca02c', 'Random': '#d62728', 'Mixed': '#ff7f0e'}
+        # Generate distinct colors for each pattern
+        if len(patterns) <= 10:
+            colors_array = plt.cm.tab10(np.linspace(0, 1, 10))
+        else:
+            colors_array = plt.cm.tab20(np.linspace(0, 1, 20))
+        
+        pattern_colors = {pattern: colors_array[i] for i, pattern in enumerate(patterns)}
 
-        for idx, ptype in enumerate(pattern_types):
-            type_data = model_type_scores[model_type_scores['pattern_type'] == ptype]
-            type_data = type_data.set_index('model').reindex(models).reset_index()
-
-            offset = (idx - 1) * width
+        for idx, pattern in enumerate(patterns):
+            pattern_data = model_pattern_scores[model_pattern_scores['pattern'] == pattern]
+            
+            positions = x + (idx - len(patterns)/2 + 0.5) * width
+            
             ax.bar(
-                x + offset, type_data['mean'], width,
-                label=ptype, alpha=0.8,
-                yerr=1.96 * type_data['sem'], capsize=3,
-                color=colors.get(ptype, 'gray')
+                positions,
+                pattern_data['mean'],
+                width,
+                label=pattern,
+                color=pattern_colors[pattern],
+                alpha=0.8,
+                yerr=1.96 * pattern_data['sem'],
+                capsize=3
             )
 
         ax.set_xlabel("Model", fontsize=11, fontweight='bold')
         ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
-        ax.set_title("Coherent vs Random", fontsize=12, fontweight='bold')
+        ax.set_title("All Patterns by Model", fontsize=12, fontweight='bold')
         ax.set_xticks(x)
         ax.set_xticklabels(models, rotation=45, ha='right')
-        ax.legend(title="Pattern Type", fontsize=8)
-        ax.set_ylim(0, 1.0)
+        ax.legend(title="Pattern", fontsize=8, ncol=2)
+        ax.set_ylim(0.0, 0.6)
         ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         ax.grid(axis='y', alpha=0.3)
 
@@ -366,11 +365,11 @@ class MultiModelComparison:
         ax.set_title("Summary Statistics", fontsize=12, fontweight='bold', pad=20)
 
     def _plot_rule_length_comparison_all(self):
-        """NEW: Dedicated plot showing how models scale with rule length"""
-        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        """plots showing how models scale with rule length"""
         
-        # Left: Overall scaling
-        ax1 = axes[0]
+        # Plot 1: Overall scaling (all patterns)
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        
         model_count_scores = (
             self.expanded_df
                 .groupby(['model', 'count'])['found']
@@ -384,29 +383,35 @@ class MultiModelComparison:
             model_data = model_count_scores[model_count_scores['model'] == model].sort_values('count')
             color = self.model_colors[model]
 
-            ax1.plot(
+            ax.plot(
                 model_data['count'], model_data['mean'],
                 marker='o', linewidth=2, markersize=8,
                 label=model, color=color, alpha=0.8
             )
 
-            ax1.fill_between(
+            ax.fill_between(
                 model_data['count'],
                 model_data['mean'] - 1.96 * model_data['sem'],
                 model_data['mean'] + 1.96 * model_data['sem'],
                 alpha=0.2, color=color
             )
 
-        ax1.set_xlabel("Rule Length (words)", fontsize=12, fontweight='bold')
-        ax1.set_ylabel("Overall Follow Rate", fontsize=12, fontweight='bold')
-        ax1.set_title("Scaling with Rule Length (All Patterns)", fontsize=13, fontweight='bold')
-        ax1.legend(title="Model", fontsize=9)
-        ax1.set_ylim(0, 1.0)
-        ax1.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-        ax1.grid(True, alpha=0.3)
+        ax.set_xlabel("Rule Length (words)", fontsize=12, fontweight='bold')
+        ax.set_ylabel("Overall Follow Rate", fontsize=12, fontweight='bold')
+        ax.set_title("Model Scaling with Rule Length (All Patterns)", fontsize=13, fontweight='bold')
+        ax.legend(title="Model", fontsize=10)
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(True, alpha=0.3)
         
-        # Right: Pattern-specific scaling (coherent vs random)
-        ax2 = axes[1]
+        plt.tight_layout()
+        plt.savefig(self.results_dir / "model_comparison_overall_scaling.png", 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+        print("✅ Overall scaling comparison saved")
+        
+        # Plot 2: Pattern-specific scaling (coherent vs random)
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
         
         def classify_pattern(pattern):
             if pattern in ['c', 'r']:
@@ -418,45 +423,65 @@ class MultiModelComparison:
         scaling_data = scaling_data[scaling_data['pattern_class'].isin(['c', 'r'])]
         
         for model in models:
-            for pclass, pstyle in [('c', '-'), ('r', '--')]:
-                model_pattern_data = scaling_data[
-                    (scaling_data['model'] == model) & 
-                    (scaling_data['pattern_class'] == pclass)
-                ]
-                
-                if len(model_pattern_data) == 0:
-                    continue
-                
+            color = self.model_colors[model]
+            
+            # Coherent (solid line, circles)
+            coherent_data = scaling_data[
+                (scaling_data['model'] == model) & 
+                (scaling_data['pattern_class'] == 'c')
+            ]
+            
+            if len(coherent_data) > 0:
                 count_stats = (
-                    model_pattern_data
+                    coherent_data
                         .groupby('count')['found']
                         .agg(mean='mean', sem='sem')
                         .reset_index()
                         .sort_values('count')
                 )
                 
-                color = self.model_colors[model]
-                label = f"{model} ({'coherent' if pclass == 'c' else 'random'})"
-                
-                ax2.plot(
+                ax.plot(
                     count_stats['count'], count_stats['mean'],
-                    marker='o', linewidth=2, markersize=6,
-                    linestyle=pstyle, label=label, color=color, alpha=0.8
+                    marker='o', linewidth=2.5, markersize=8,
+                    linestyle='-', label=f"{model} (coherent)", 
+                    color=color, alpha=0.8
+                )
+            
+            # Random (dashed line, squares, lighter)
+            random_data = scaling_data[
+                (scaling_data['model'] == model) & 
+                (scaling_data['pattern_class'] == 'r')
+            ]
+            
+            if len(random_data) > 0:
+                count_stats = (
+                    random_data
+                        .groupby('count')['found']
+                        .agg(mean='mean', sem='sem')
+                        .reset_index()
+                        .sort_values('count')
+                )
+                
+                ax.plot(
+                    count_stats['count'], count_stats['mean'],
+                    marker='s', linewidth=2.5, markersize=7,
+                    linestyle='--', label=f"{model} (random)", 
+                    color=color, alpha=0.5
                 )
         
-        ax2.set_xlabel("Rule Length (words)", fontsize=12, fontweight='bold')
-        ax2.set_ylabel("Follow Rate", fontsize=12, fontweight='bold')
-        ax2.set_title("Scaling: Coherent vs Random", fontsize=13, fontweight='bold')
-        ax2.legend(fontsize=8, ncol=2)
-        ax2.set_ylim(0, 1.0)
-        ax2.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
-        ax2.grid(True, alpha=0.3)
+        ax.set_xlabel("Rule Length (words)", fontsize=12, fontweight='bold')
+        ax.set_ylabel("Follow Rate", fontsize=12, fontweight='bold')
+        ax.set_title("Model Scaling: Coherent (○, solid) vs Random (□, dashed)", fontsize=13, fontweight='bold')
+        ax.legend(fontsize=9, ncol=1, loc='best')
+        ax.set_ylim(0, 1.0)
+        ax.axhline(y=0.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        ax.grid(True, alpha=0.3)
         
         plt.tight_layout()
-        plt.savefig(self.results_dir / "model_comparison_rule_length_scaling.png", 
+        plt.savefig(self.results_dir / "model_comparison_coherent_vs_random_scaling.png", 
                    dpi=300, bbox_inches='tight')
         plt.close()
-        print("✅ Rule length scaling comparison saved")
+        print("✅ Coherent vs random scaling comparison saved")
 
     def get_summary(self) -> str:
         summary = ["=" * 60, "MODEL COMPARISON SUMMARY", "=" * 60, ""]
