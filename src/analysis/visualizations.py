@@ -331,7 +331,7 @@ class ResultsVisualizer:
             plt.close()
     
     def plot_seed_variance_analysis(self):
-        """NEW: Visualize variance across seeds vs within seeds"""
+        """Visualize variance across seeds vs within seeds"""
         rule_counts = sorted(self.expanded_df['count'].unique())
         
         for count in rule_counts:
@@ -347,16 +347,22 @@ class ResultsVisualizer:
             ax1 = axes[0, 0]
             seed_means = count_data.groupby(['pattern', 'seed'])['found'].mean().reset_index()
             
+            # Get unique seeds to use for x-axis
+            unique_seeds = sorted(seed_means['seed'].unique())
+            seed_to_idx = {seed: idx for idx, seed in enumerate(unique_seeds)}
+            
             for pattern in patterns:
                 pattern_seeds = seed_means[seed_means['pattern'] == pattern]
-                x_pos = np.arange(len(pattern_seeds))
+                x_pos = [seed_to_idx[seed].split('.')[0] for seed in pattern_seeds['seed']]
                 color = self.color_map.get(pattern, 'steelblue')
                 ax1.scatter(x_pos, pattern_seeds['found'], label=pattern, 
                            alpha=0.6, s=100, color=color)
             
-            ax1.set_xlabel("Seed Index", fontsize=11)
+            ax1.set_xlabel("Seed", fontsize=11)
             ax1.set_ylabel("Follow Rate", fontsize=11)
             ax1.set_title("Seed-Level Performance Variation", fontsize=12, fontweight='bold')
+            ax1.set_xticks(range(len(unique_seeds)))
+            ax1.set_xticklabels(unique_seeds, rotation=45, ha='right')
             ax1.legend(title="Pattern", fontsize=9)
             ax1.set_ylim(0, 1.0)
             ax1.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
