@@ -331,45 +331,50 @@ class ResultsVisualizer:
             plt.close()
     
     def plot_seed_variance_analysis(self):
-        """Visualize variance across seeds vs within seeds"""
+        """Visualize variance across seeds vs within seeds - split into separate plots"""
         rule_counts = sorted(self.expanded_df['count'].unique())
         
         for count in rule_counts:
             count_dir = self.output_dir / f"{count}_rules"
-            count_dir.mkdir(parents=True, exist_ok=True)
+            seed_variance_dir = count_dir / "seed_variance"
+            seed_variance_dir.mkdir(parents=True, exist_ok=True)
             
             count_data = self.expanded_df[self.expanded_df['count'] == count]
             patterns = sorted(count_data['pattern'].unique())
             
-            fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-            
-            # Plot 1: Seed-level means with error bars
-            ax1 = axes[0, 0]
+            # Plot 1: Seed-level means with cleaned seed names
+            fig, ax = plt.subplots(1, 1, figsize=(12, 6))
             seed_means = count_data.groupby(['pattern', 'seed'])['found'].mean().reset_index()
             
-            # Get unique seeds to use for x-axis
+            # Get unique seeds and clean the names
             unique_seeds = sorted(seed_means['seed'].unique())
+            seed_display_names = [seed.split(".")[0] for seed in unique_seeds]
             seed_to_idx = {seed: idx for idx, seed in enumerate(unique_seeds)}
             
             for pattern in patterns:
                 pattern_seeds = seed_means[seed_means['pattern'] == pattern]
-                x_pos = [seed_to_idx[seed].split('.')[0] for seed in pattern_seeds['seed']]
+                x_pos = [seed_to_idx[seed] for seed in pattern_seeds['seed']]
                 color = self.color_map.get(pattern, 'steelblue')
-                ax1.scatter(x_pos, pattern_seeds['found'], label=pattern, 
-                           alpha=0.6, s=100, color=color)
+                ax.scatter(x_pos, pattern_seeds['found'], label=pattern, 
+                          alpha=0.6, s=100, color=color)
             
-            ax1.set_xlabel("Seed", fontsize=11)
-            ax1.set_ylabel("Follow Rate", fontsize=11)
-            ax1.set_title("Seed-Level Performance Variation", fontsize=12, fontweight='bold')
-            ax1.set_xticks(range(len(unique_seeds)))
-            ax1.set_xticklabels(unique_seeds, rotation=45, ha='right')
-            ax1.legend(title="Pattern", fontsize=9)
-            ax1.set_ylim(0, 1.0)
-            ax1.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
-            ax1.grid(True, alpha=0.3)
+            ax.set_xlabel("Seed", fontsize=11, fontweight='bold')
+            ax.set_ylabel("Follow Rate", fontsize=11, fontweight='bold')
+            ax.set_title(f"Seed-Level Performance Variation ({count} rules)", fontsize=12, fontweight='bold')
+            ax.set_xticks(range(len(unique_seeds)))
+            ax.set_xticklabels(seed_display_names, rotation=45, ha='right')
+            ax.legend(title="Pattern", fontsize=9)
+            ax.set_ylim(0, 1.0)
+            ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+            ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig(seed_variance_dir / "01_seed_level_means.png", 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
             
             # Plot 2: Variance decomposition
-            ax2 = axes[0, 1]
+            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
             variance_data = []
             for pattern in patterns:
                 pattern_df = count_data[count_data['pattern'] == pattern]
@@ -392,21 +397,26 @@ class ResultsVisualizer:
             x = np.arange(len(var_df))
             width = 0.35
             
-            ax2.bar(x - width/2, var_df['between_seed'], width, 
-                   label='Between-seed variance', alpha=0.8)
-            ax2.bar(x + width/2, var_df['within_seed'], width,
-                   label='Within-seed variance', alpha=0.8)
+            ax.bar(x - width/2, var_df['between_seed'], width, 
+                  label='Between-seed variance', alpha=0.8)
+            ax.bar(x + width/2, var_df['within_seed'], width,
+                  label='Within-seed variance', alpha=0.8)
             
-            ax2.set_xlabel("Pattern", fontsize=11)
-            ax2.set_ylabel("Variance", fontsize=11)
-            ax2.set_title("Variance Decomposition", fontsize=12, fontweight='bold')
-            ax2.set_xticks(x)
-            ax2.set_xticklabels(var_df['pattern'], rotation=45, ha='right')
-            ax2.legend(fontsize=9)
-            ax2.grid(axis='y', alpha=0.3)
+            ax.set_xlabel("Pattern", fontsize=11, fontweight='bold')
+            ax.set_ylabel("Variance", fontsize=11, fontweight='bold')
+            ax.set_title(f"Variance Decomposition ({count} rules)", fontsize=12, fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels(var_df['pattern'], rotation=45, ha='right')
+            ax.legend(fontsize=9)
+            ax.grid(axis='y', alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig(seed_variance_dir / "02_variance_decomposition.png", 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
             
             # Plot 3: ICC (consistency) across patterns
-            ax3 = axes[1, 0]
+            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
             icc_data = []
             for pattern in patterns:
                 pattern_df = count_data[count_data['pattern'] == pattern]
@@ -421,22 +431,27 @@ class ResultsVisualizer:
             icc_df = pd.DataFrame(icc_data)
             colors_list = [self.color_map.get(p, 'steelblue') for p in icc_df['pattern']]
             
-            ax3.bar(range(len(icc_df)), icc_df['icc'], alpha=0.8, color=colors_list)
-            ax3.set_xlabel("Pattern", fontsize=11)
-            ax3.set_ylabel("ICC (Seed Consistency)", fontsize=11)
-            ax3.set_title("Intraclass Correlation (Seed Consistency)", fontsize=12, fontweight='bold')
-            ax3.set_xticks(range(len(icc_df)))
-            ax3.set_xticklabels(icc_df['pattern'], rotation=45, ha='right')
-            ax3.set_ylim(0, 1.0)
-            ax3.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, 
-                       label='Moderate consistency')
-            ax3.axhline(y=0.75, color='green', linestyle='--', alpha=0.5,
-                       label='High consistency')
-            ax3.legend(fontsize=8)
-            ax3.grid(axis='y', alpha=0.3)
+            ax.bar(range(len(icc_df)), icc_df['icc'], alpha=0.8, color=colors_list)
+            ax.set_xlabel("Pattern", fontsize=11, fontweight='bold')
+            ax.set_ylabel("ICC (Seed Consistency)", fontsize=11, fontweight='bold')
+            ax.set_title(f"Intraclass Correlation - Seed Consistency ({count} rules)", fontsize=12, fontweight='bold')
+            ax.set_xticks(range(len(icc_df)))
+            ax.set_xticklabels(icc_df['pattern'], rotation=45, ha='right')
+            ax.set_ylim(0, 1.0)
+            ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, 
+                      label='Moderate consistency')
+            ax.axhline(y=0.75, color='green', linestyle='--', alpha=0.5,
+                      label='High consistency')
+            ax.legend(fontsize=8)
+            ax.grid(axis='y', alpha=0.3)
+            
+            plt.tight_layout()
+            plt.savefig(seed_variance_dir / "03_icc_consistency.png", 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
             
             # Plot 4: Box plot showing distribution across seeds
-            ax4 = axes[1, 1]
+            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
             box_data = []
             box_labels = []
             for pattern in patterns:
@@ -444,25 +459,25 @@ class ResultsVisualizer:
                 box_data.append(pattern_seeds)
                 box_labels.append(pattern)
             
-            bp = ax4.boxplot(box_data, labels=box_labels, patch_artist=True)
+            bp = ax.boxplot(box_data, labels=box_labels, patch_artist=True)
             for patch, pattern in zip(bp['boxes'], box_labels):
                 patch.set_facecolor(self.color_map.get(pattern, 'steelblue'))
                 patch.set_alpha(0.6)
             
-            ax4.set_xlabel("Pattern", fontsize=11)
-            ax4.set_ylabel("Follow Rate (Seed-Level)", fontsize=11)
-            ax4.set_title("Distribution of Seed-Level Performance", fontsize=12, fontweight='bold')
-            ax4.set_ylim(0, 1.0)
-            ax4.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
-            ax4.grid(axis='y', alpha=0.3)
-            plt.setp(ax4.xaxis.get_majorticklabels(), rotation=45, ha='right')
+            ax.set_xlabel("Pattern", fontsize=11, fontweight='bold')
+            ax.set_ylabel("Follow Rate (Seed-Level)", fontsize=11, fontweight='bold')
+            ax.set_title(f"Distribution of Seed-Level Performance ({count} rules)", fontsize=12, fontweight='bold')
+            ax.set_ylim(0, 1.0)
+            ax.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
+            ax.grid(axis='y', alpha=0.3)
+            plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
             
-            plt.suptitle(f"Seed-Level Variance Analysis ({count} rules)", 
-                        fontsize=15, fontweight='bold', y=0.995)
             plt.tight_layout()
-            plt.savefig(count_dir / "03_seed_variance_analysis.png", 
+            plt.savefig(seed_variance_dir / "04_seed_distribution_boxplot.png", 
                        dpi=300, bbox_inches='tight')
             plt.close()
+            
+            print(f"✅ Seed variance analysis saved to {seed_variance_dir}/")
 
     def create_all(self):
         """Generate all visualizations"""
