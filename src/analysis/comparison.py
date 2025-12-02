@@ -150,6 +150,7 @@ class MultiModelComparison:
         # Also create cross-count comparison
         print(f"\n📊 Generating cross-count comparisons...")
         self._plot_rule_length_comparison_all()
+        self.plot_absolute_rules_followed()  # Add this line
         print(f"✅ All model comparisons complete!")
 
     def _plot_model_pattern_comparison(self, ax, data):
@@ -503,3 +504,198 @@ class MultiModelComparison:
 
     def plot_model_comparison(self):
         self.plot_model_comparison_comprehensive()
+
+    def plot_absolute_rules_followed(self):
+        """Plot absolute number of rules followed by each model across rule counts"""
+        
+        # Calculate absolute number of rules followed per sample
+        self.all_results['absolute_rules_followed'] = self.all_results['score'] * self.all_results['count']
+        
+        # Plot 1: Overall (all patterns combined)
+        output_path = self.results_dir / "model_comparison_absolute_rules_followed.png"
+        
+        absolute_stats = (
+            self.all_results
+                .groupby(['model', 'count'])
+                .agg({
+                    'absolute_rules_followed': ['mean', 'std', 'sem'],
+                    'score': 'count'
+                })
+                .reset_index()
+        )
+        
+        absolute_stats.columns = ['model', 'count', 'mean_rules', 'std_rules', 'sem_rules', 'n_samples']
+        
+        models = sorted(absolute_stats['model'].unique())
+        counts = sorted(absolute_stats['count'].unique())
+        
+        fig, ax = plt.subplots(figsize=(12, 7))
+        
+        x = np.arange(len(counts))
+        width = 0.8 / len(models)
+        
+        for idx, model in enumerate(models):
+            model_data = absolute_stats[absolute_stats['model'] == model].sort_values('count')
+            model_data = model_data.set_index('count').reindex(counts).reset_index()
+            
+            offset = (idx - len(models)/2 + 0.5) * width
+            color = self.model_colors[model]
+            
+            ax.bar(
+                x + offset, 
+                model_data['mean_rules'], 
+                width,
+                label=model,
+                alpha=0.8,
+                color=color,
+                yerr=1.96 * model_data['sem_rules'],
+                capsize=3
+            )
+        
+        ax.set_xlabel("Number of Rules in Prompt", fontsize=13, fontweight='bold')
+        ax.set_ylabel("Absolute Number of Rules Followed", fontsize=13, fontweight='bold')
+        ax.set_title("Absolute Rules Followed by Model and Rule Count (All Patterns)", fontsize=15, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(counts)
+        ax.legend(title="Model", fontsize=10, ncol=2)
+        ax.grid(axis='y', alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"✅ Absolute rules followed comparison saved to {output_path}")
+        
+        # Summary table for overall
+        summary_table = absolute_stats.pivot_table(
+            index='model',
+            columns='count',
+            values='mean_rules',
+            aggfunc='first'
+        )
+        
+        summary_path = self.results_dir / "absolute_rules_followed_summary.csv"
+        summary_table.to_csv(summary_path)
+        print(f"✅ Summary table saved to {summary_path}")
+        
+        # Plot 2: By pattern - line plots showing scaling
+        output_path_pattern = self.results_dir / "model_comparison_absolute_rules_by_pattern.png"
+    
+        pattern_stats = (
+            self.all_results
+                .groupby(['model', 'pattern', 'count'])
+                .agg({
+                    'absolute_rules_followed': ['mean', 'sem'],
+                    'score': 'count'
+                })
+                .reset_index()
+        )
+    
+        pattern_stats.columns = ['model', 'pattern', 'count', 'mean_rules', 'sem_rules', 'n_samples']
+    
+        patterns = sorted(pattern_stats['pattern'].unique())
+        n_patterns = len(patterns)
+    
+        # Create subplots: one for each pattern
+        n_cols = min(3, n_patterns)
+        n_rows = (n_patterns + n_cols - 1) // n_cols
+    
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 5*n_rows), squeeze=False)
+        axes = axes.flatten()
+    
+        for idx, pattern in enumerate(patterns):
+            ax = axes[idx]
+            pattern_data = pattern_stats[pattern_stats['pattern'] == pattern]
+        
+            for model in models:
+                model_data = pattern_data[pattern_data['model'] == model].sort_values('count')
+            
+                if len(model_data) > 0:
+                    color = self.model_colors[model]
+                
+                    ax.plot(
+                        model_data['count'], 
+                        model_data['mean_rules'],
+                        marker='o',
+                        linewidth=2.5,
+                        markersize=8,
+                        label=model,
+                        color=color,
+                        alpha=0.8
+                    )
+                
+                    # Add error bars
+                    ax.fill_between(
+                        model_data['count'],
+                        model_data['mean_rules'] - 1.96 * model_data['sem_rules'],
+                        model_data['mean_rules'] + 1.96 * model_data['sem_rules'],
+                        alpha=0.2,
+                        color=color
+                    )
+        
+            ax.set_xlabel("Number of Rules", fontsize=11, fontweight='bold')
+            ax.set_ylabel("Absolute Rules Followed", fontsize=11, fontweight='bold')
+            ax.set_title(f"Pattern: {pattern}", fontsize=12, fontweight='bold')
+            ax.legend(fontsize=9)
+            ax.grid(True, alpha=0.3)
+            ax.set_ylim(bottom=0)
+    
+        # Hide extra subplots
+        for idx in range(n_patterns, len(axes)):
+            axes[idx].set_visible(False)
+    
+        plt.suptitle("Absolute Rules Followed by Pattern", fontsize=16, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        plt.savefig(output_path_pattern, dpi=300, bbox_inches='tight')
+        plt.close()
+    
+        print(f"✅ Pattern-specific absolute rules comparison saved to {output_path_pattern}")
+    
+        # Plot 3: Heatmap showing model x pattern x count
+        for count in counts:
+            count_data = pattern_stats[pattern_stats['count'] == count]
+        
+            heatmap_data = count_data.pivot_table(
+                index='model',
+                columns='pattern',
+                values='mean_rules',
+                aggfunc='first'
+            )
+        
+            fig, ax = plt.subplots(figsize=(10, 6))
+        
+            sns.heatmap(
+                heatmap_data,
+                annot=True,
+                fmt='.1f',
+                cmap='YlOrRd',
+                cbar_kws={'label': 'Absolute Rules Followed'},
+                ax=ax,
+                linewidths=0.5
+            )
+        
+            ax.set_xlabel("Pattern Type", fontsize=12, fontweight='bold')
+            ax.set_ylabel("Model", fontsize=12, fontweight='bold')
+            ax.set_title(f"Absolute Rules Followed: Model × Pattern ({count} rules)", 
+                        fontsize=13, fontweight='bold')
+        
+            plt.tight_layout()
+            output_heatmap = self.results_dir / f"absolute_rules_heatmap_{count}_rules.png"
+            plt.savefig(output_heatmap, dpi=300, bbox_inches='tight')
+            plt.close()
+        
+            print(f"✅ Heatmap for {count} rules saved to {output_heatmap}")
+    
+        # Detailed CSV with pattern breakdowns
+        detailed_summary = pattern_stats.pivot_table(
+            index=['model', 'pattern'],
+            columns='count',
+            values='mean_rules',
+            aggfunc='first'
+        )
+    
+        detailed_path = self.results_dir / "absolute_rules_followed_by_pattern_detailed.csv"
+        detailed_summary.to_csv(detailed_path)
+        print(f"✅ Detailed pattern summary saved to {detailed_path}")
+    
+        return summary_table
