@@ -42,7 +42,7 @@ The framework tests LLMs on vocabulary constraint tasks where they must write st
 
 2. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/entropic-instruction-following.git
+   git clone https://github.com/MostHumble/entropic-instruction-following.git
    cd entropic-instruction-following
    ```
 
@@ -60,12 +60,7 @@ The framework tests LLMs on vocabulary constraint tasks where they must write st
    ```
    HF_TOKEN=your_huggingface_token_here
    ```
-
-5. **Download NLTK data** (required for WordNet):
-   ```bash
-   uv run python -c "import nltk; nltk.download('wordnet'); nltk.download('omw-1.4')"
-   ```
-
+   
 ## Usage
 
 ### 1. Configure Experiment
@@ -116,9 +111,9 @@ Edit `conf/config.yaml` to specify which models to test:
 
 ```yaml
 experiment:
-  models: ["mistral", "llama", "falcon"]  # or null for all models
-  rule_counts: [50, 200, 400]  # null = all, or specify subset
-  patterns: ["c", "r", "cr"]  # null = all, or specify subset
+  models: ["mistral", "llama", "falcon"]  # or null for all models from the conf/model dir
+  rule_counts: [50, 200, 400]  # null for all rules in the generated data, or specify subset
+  patterns: ["c", "r", "cr"]  # null for all paterns in the generated data  = all, or specify subset
 ```
 
 For each model, create a config file under `conf/model/` with the Hugging Face model name:
@@ -207,20 +202,17 @@ Initial experiments reveal:
 1. **Coherence helps under load**: At 200-400 rules, coherent instructions significantly improve compliance
 2. **Model-specific behaviors**: Different architectures show distinct patterns (e.g., Mistral benefits more from coherence than Olmo)
 3. **Position still matters**: Primacy bias persists even with coherent instructions
-4. **Pattern interactions**: Bookended patterns (`c|r|c`) can help models recover from chaotic middle sections
-
-See the [blog post](link-to-your-blog) for detailed analysis.
-
+   
 ## Citation
 
 If you use this framework in your research, please cite:
 
 ```bibtex
 @software{entropic_instruction_following,
-  author = {Your Name},
+  author = {Sifal Klioui},
   title = {Entropic Instruction Following: Testing Semantic Coherence in LLM Instruction Following},
   year = {2025},
-  url = {https://github.com/yourusername/entropic-instruction-following}
+  url = {https://github.com/MostHumble/entropic-instruction-following}
 }
 ```
 
@@ -230,4 +222,4 @@ See [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-This work was inspired by [Alan Roth's experiments](https://alantech.io/blog/rule-following-an-llm-benchmark) on LLM instruction following and context window utilization.
+This work was inspired by [Alan Roth's experiments](https://www.linkedin.com/pulse/why-instruction-order-matters-llms-new-evidence-from-testing-roth-8iuic/?trackingId=bqk04yu1zh%2BShycCeI3z7A%3D%3D) on LLM instruction following and context window utilization.
