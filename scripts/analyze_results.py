@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.analysis.visualizations import ResultsVisualizer
 from src.analysis.statistics import generate_summary_statistics
 from src.analysis.comparison import MultiModelComparison
+from src.analysis.plot_token_visual_test import TokenPerformanceVisualizer, get_available_models, load_model_configs
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg: DictConfig):
@@ -34,8 +35,6 @@ def main(cfg: DictConfig):
         print("No results found. Run run_experiment.py first.")
         return
     
-    # Then: Analyze each model individually
-    import glob
     for csv_file in results_dir.glob("results_*.csv"):
         # Extract model name from filename
         parts = csv_file.stem.split('_')
@@ -57,7 +56,28 @@ def main(cfg: DictConfig):
         # Generate statistics
         summary_path = model_output_dir / "analysis_summary.txt"
         generate_summary_statistics(str(csv_file), str(summary_path))
+    
+    # Second: Generate token-count-performance scatter plots
+    print("\n📈 Generating token performance scatter plots...")
+    # Determine which models to analyze
+    available_models = get_available_models()
+    
+    if cfg.experiment.models is None:
+        models_to_analyze = available_models
+    else:
+        models_to_analyze = cfg.experiment.models
+            
+    # Load model configurations
+    model_configs = load_model_configs(models_to_analyze)
 
+    # Initialize visualizer
+    dataset_path = cfg.word_data_generator.dataset_path
+    output_dir = Path(results_dir) / "token_scatter_plots"
+    
+    visualizer = TokenPerformanceVisualizer(results_dir, dataset_path, model_configs)
+    
+    # Generate all plots
+    visualizer.generate_all_plots(output_dir)
 
 if __name__ == "__main__":
     main()
