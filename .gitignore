@@ -68,10 +68,6 @@ dmypy.json
 # VS Code
 .vscode/
 
-# Data and results
-data/
-*.json
-
 # NLTK data
 nltk_data/
 
