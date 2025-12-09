@@ -1,0 +1,2 @@
+data/results/**/*.csv filter=lfs diff=lfs merge=lfs -text
+data/results/**/*.png filter=lfs diff=lfs merge=lfs -text
