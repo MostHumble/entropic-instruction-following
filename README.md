@@ -1,15 +1,14 @@
 # Entropic Instruction Following
 
-This project investigates whether the semantic relatedness of instructions impacts a model's ability to follow them. Inspired by Alan Roth's work on vocabulary constraint tasks, we extend the analysis to explore how semantic coherence interacts with rule complexity.
+## Overview
+
+This project investigates whether the semantic relatedness of instructions impacts a model's ability to follow them. Inspired by Alan Roth's work on vocabulary constraint tasks, we extend the analysis by introducing **entropy** as a controlled variable.
 
 ## Resources
 
 - 📺 [Short YouTube Video Explanation](https://www.youtube.com/watch?v=9JKWXe4yOEA)
 - 📝 [Blog Post: Entropic Instruction Following](https://sifal.social/posts/Entropic-Instruction-Following/)
-  
-## Overview
 
-This project investigates whether the semantic relatedness of instructions impacts a model's ability to follow them. Inspired by Alan Roth's work on vocabulary constraint tasks, we extend the analysis by introducing **entropy** as a controlled variable.
 
 ### Key Questions
 
